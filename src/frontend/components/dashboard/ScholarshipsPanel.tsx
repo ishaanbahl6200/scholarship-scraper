@@ -78,6 +78,9 @@ export default function ScholarshipsPanel() {
   const handleMatching = async () => {
     setMatching(true)
     setMatchProgress(0)
+    const matchStartTime = Date.now()
+    localStorage.setItem('matchStartTime', matchStartTime.toString())
+    localStorage.setItem('matchInProgress', 'true')
 
     const matchProgressInterval = setInterval(() => {
       setMatchProgress((prev) => {
@@ -98,6 +101,8 @@ export default function ScholarshipsPanel() {
           setTimeout(() => {
             setMatching(false)
             setMatchProgress(0)
+            localStorage.removeItem('matchStartTime')
+            localStorage.removeItem('matchInProgress')
           }, 1000)
         }, 10000)
       } else {
@@ -106,12 +111,16 @@ export default function ScholarshipsPanel() {
         console.error(`Failed to update matches: ${errorData.error || 'Please try again.'}`)
         setMatching(false)
         setMatchProgress(0)
+        localStorage.removeItem('matchStartTime')
+        localStorage.removeItem('matchInProgress')
       }
     } catch (error) {
       clearInterval(matchProgressInterval)
       console.error('Error triggering matching:', error)
       setMatching(false)
       setMatchProgress(0)
+      localStorage.removeItem('matchStartTime')
+      localStorage.removeItem('matchInProgress')
     }
   }
 
@@ -319,19 +328,6 @@ export default function ScholarshipsPanel() {
             </div>
             <p className="text-xs text-muted-foreground mt-1 text-center">
               Scraping scholarships... {Math.round(scrapeProgress)}%
-            </p>
-          </div>
-        )}
-        {matching && (
-          <div className="w-full">
-            <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-              <div
-                className="h-full bg-primary transition-all duration-300 ease-out"
-                style={{ width: `${matchProgress}%` }}
-              />
-            </div>
-            <p className="text-xs text-muted-foreground mt-1 text-center">
-              Updating matches... {Math.round(matchProgress)}%
             </p>
           </div>
         )}

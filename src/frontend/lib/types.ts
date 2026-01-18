@@ -5,6 +5,7 @@ export interface ScholarshipCard {
   deadline?: string | null
   tags: string[]
   matchScore?: number | null
+  matchReason?: string | null
   applicationUrl?: string | null
   status?: string | null
 }

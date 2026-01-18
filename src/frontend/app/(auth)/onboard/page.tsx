@@ -77,8 +77,9 @@ export default async function OnboardPage() {
     }
   }
 
+  const authName = session.user.name && session.user.name !== session.user.email ? session.user.name : ''
   const defaultValues = {
-    name: existingProfile?.name || session.user.name || '',
+    name: existingProfile?.name || authName,
     school: existingProfile?.school || '',
     program: existingProfile?.program || '',
     gpa: existingProfile?.gpa ?? 0,

@@ -383,96 +383,130 @@ export default function ProfilePanel() {
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="card lg:col-span-2 space-y-4 p-3">
           <h3 className="text-lg font-semibold text-foreground">User Info</h3>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-4 md:grid-cols-2">
-            <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">Name</label>
-              <input className="input-field" {...form.register('name')} />
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <div className="max-h-[50vh] overflow-y-auto pr-4 space-y-6 simple-scrollbar">
+              <section className="space-y-3">
+                <h4 className="text-base font-semibold text-foreground">Academic Info</h4>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="block text-sm font-medium text-muted-foreground mb-1">Name</label>
+                    <input className="input-field" {...form.register('name')} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-muted-foreground mb-1">School</label>
+                    <SearchableSelect
+                      options={schoolOptions}
+                      value={form.watch('school') || ''}
+                      onChange={(value) => form.setValue('school', value, { shouldValidate: true, shouldDirty: true })}
+                      placeholder="Search or select school"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-muted-foreground mb-1">Program</label>
+                    <SearchableSelect
+                      options={programOptions}
+                      value={form.watch('program') || ''}
+                      onChange={(value) => form.setValue('program', value, { shouldValidate: true, shouldDirty: true })}
+                      placeholder="Search or select program"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-muted-foreground mb-1">GPA</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="4"
+                      className="input-field"
+                      {...form.register('gpa', { valueAsNumber: true })}
+                    />
+                  </div>
+                </div>
+              </section>
+
+              <section className="space-y-3">
+                <h4 className="text-base font-semibold text-foreground">Location</h4>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="block text-sm font-medium text-muted-foreground mb-1">Province</label>
+                    <select className="input-field" {...form.register('province')}>
+                      <option value="">Select province</option>
+                      <option value="Alberta">Alberta</option>
+                      <option value="British Columbia">British Columbia</option>
+                      <option value="Manitoba">Manitoba</option>
+                      <option value="New Brunswick">New Brunswick</option>
+                      <option value="Newfoundland and Labrador">Newfoundland and Labrador</option>
+                      <option value="Northwest Territories">Northwest Territories</option>
+                      <option value="Nova Scotia">Nova Scotia</option>
+                      <option value="Nunavut">Nunavut</option>
+                      <option value="Ontario">Ontario</option>
+                      <option value="Prince Edward Island">Prince Edward Island</option>
+                      <option value="Quebec">Quebec</option>
+                      <option value="Saskatchewan">Saskatchewan</option>
+                      <option value="Yukon">Yukon</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-muted-foreground mb-1">Citizenship</label>
+                    <select className="input-field" {...form.register('citizenship')}>
+                      <option value="">Select citizenship</option>
+                      <option value="Canadian Citizen">Canadian Citizen</option>
+                      <option value="Permanent Resident">Permanent Resident</option>
+                      <option value="International Student">International Student</option>
+                      <option value="Refugee">Refugee</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+                </div>
+              </section>
+
+              <section className="space-y-3">
+                <h4 className="text-base font-semibold text-foreground">Demographics</h4>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="block text-sm font-medium text-muted-foreground mb-1">Ethnicity</label>
+                    <select className="input-field" {...form.register('ethnicity')}>
+                      <option value="">Select ethnicity</option>
+                      <option value="Indigenous (First Nations, Métis, Inuit)">Indigenous (First Nations, Métis, Inuit)</option>
+                      <option value="Black/African Canadian">Black/African Canadian</option>
+                      <option value="East Asian">East Asian</option>
+                      <option value="South Asian">South Asian</option>
+                      <option value="Southeast Asian">Southeast Asian</option>
+                      <option value="Middle Eastern">Middle Eastern</option>
+                      <option value="Latin American">Latin American</option>
+                      <option value="White/Caucasian">White/Caucasian</option>
+                      <option value="Mixed/Multi-racial">Mixed/Multi-racial</option>
+                      <option value="Other">Other</option>
+                      <option value="Prefer not to say">Prefer not to say</option>
+                    </select>
+                  </div>
+                </div>
+              </section>
+
+              <section className="space-y-3">
+                <h4 className="text-base font-semibold text-foreground">Interests</h4>
+                <div>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1">Interests</label>
+                  <input
+                    className="input-field"
+                    placeholder="e.g., Engineering, Business, Arts"
+                    {...form.register('interests', {
+                      setValueAs: (value) =>
+                        typeof value === 'string'
+                          ? value.split(',').map((item) => item.trim()).filter(Boolean)
+                          : value,
+                    })}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Comma-separated.</p>
+                </div>
+              </section>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">School</label>
-              <SearchableSelect
-                options={schoolOptions}
-                value={form.watch('school') || ''}
-                onChange={(value) => form.setValue('school', value, { shouldValidate: true, shouldDirty: true })}
-                placeholder="Search or select school"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">Program</label>
-              <SearchableSelect
-                options={programOptions}
-                value={form.watch('program') || ''}
-                onChange={(value) => form.setValue('program', value, { shouldValidate: true, shouldDirty: true })}
-                placeholder="Search or select program"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">GPA</label>
-              <input type="number" step="0.01" min="0" max="4" className="input-field" {...form.register('gpa', { valueAsNumber: true })} />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">Province</label>
-              <select className="input-field" {...form.register('province')}>
-                <option value="">Select province</option>
-                <option value="Alberta">Alberta</option>
-                <option value="British Columbia">British Columbia</option>
-                <option value="Manitoba">Manitoba</option>
-                <option value="New Brunswick">New Brunswick</option>
-                <option value="Newfoundland and Labrador">Newfoundland and Labrador</option>
-                <option value="Northwest Territories">Northwest Territories</option>
-                <option value="Nova Scotia">Nova Scotia</option>
-                <option value="Nunavut">Nunavut</option>
-                <option value="Ontario">Ontario</option>
-                <option value="Prince Edward Island">Prince Edward Island</option>
-                <option value="Quebec">Quebec</option>
-                <option value="Saskatchewan">Saskatchewan</option>
-                <option value="Yukon">Yukon</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">Citizenship</label>
-              <select className="input-field" {...form.register('citizenship')}>
-                <option value="">Select citizenship</option>
-                <option value="Canadian Citizen">Canadian Citizen</option>
-                <option value="Permanent Resident">Permanent Resident</option>
-                <option value="International Student">International Student</option>
-                <option value="Refugee">Refugee</option>
-                <option value="Other">Other</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">Ethnicity</label>
-              <select className="input-field" {...form.register('ethnicity')}>
-                <option value="">Select ethnicity</option>
-                <option value="Indigenous (First Nations, Métis, Inuit)">Indigenous (First Nations, Métis, Inuit)</option>
-                <option value="Black/African Canadian">Black/African Canadian</option>
-                <option value="East Asian">East Asian</option>
-                <option value="South Asian">South Asian</option>
-                <option value="Southeast Asian">Southeast Asian</option>
-                <option value="Middle Eastern">Middle Eastern</option>
-                <option value="Latin American">Latin American</option>
-                <option value="White/Caucasian">White/Caucasian</option>
-                <option value="Mixed/Multi-racial">Mixed/Multi-racial</option>
-                <option value="Other">Other</option>
-                <option value="Prefer not to say">Prefer not to say</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">Interests</label>
-              <input
-                className="input-field"
-                placeholder="e.g., Engineering, Business, Arts"
-                {...form.register('interests', {
-                  setValueAs: (value) =>
-                    typeof value === 'string'
-                      ? value.split(',').map((item) => item.trim()).filter(Boolean)
-                      : value,
-                })}
-              />
-              <p className="text-xs text-muted-foreground mt-1">Comma-separated.</p>
-            </div>
-            <div className="md:col-span-2 flex items-center justify-center gap-2">
-              <button type="submit" className="btn-primary" disabled={saving}>
+            <div className="flex items-center justify-center gap-2">
+              <button
+                type="submit"
+                className="px-4 py-2 rounded-md border border-border text-sm font-medium text-foreground bg-transparent hover:bg-muted transition-colors disabled:opacity-60"
+                disabled={saving}
+              >
                 {saving ? 'Saving...' : 'Save changes'}
               </button>
             </div>

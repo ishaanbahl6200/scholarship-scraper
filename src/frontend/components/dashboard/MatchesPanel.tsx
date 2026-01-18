@@ -8,7 +8,7 @@ import { ScholarshipCard } from '@/lib/types'
 type ApiScholarship = {
   scholarship_id: string
   scholarship_name: string
-  award_amount: number
+  award_amount: number | string
   match_score: number | null
   deadline: string | null
   application_url: string
@@ -40,7 +40,6 @@ function mapScholarship(item: ApiScholarship): ScholarshipCard {
     tags: safeTags.slice(0, 2),
     matchScore: item.match_score ?? null,
     applicationUrl: item.application_url,
-    matchReason: item.match_reason ?? null,
   }
 }
 
@@ -50,6 +49,8 @@ export default function MatchesPanel() {
   const [loading, setLoading] = useState(true)
   const [onboardingComplete, setOnboardingComplete] = useState(false)
   const [hasScholarships, setHasScholarships] = useState(false)
+  const [matching, setMatching] = useState(false)
+  const [matchProgress, setMatchProgress] = useState(0)
 
   const loadMatches = async () => {
     try {
@@ -97,6 +98,62 @@ export default function MatchesPanel() {
     loadMatches()
   }, [])
 
+  useEffect(() => {
+    const matchStartTime = localStorage.getItem('matchStartTime')
+    const matchInProgress = localStorage.getItem('matchInProgress')
+    if (!matchStartTime || !matchInProgress) {
+      return
+    }
+
+    const startTime = parseInt(matchStartTime, 10)
+    if (Number.isNaN(startTime)) {
+      localStorage.removeItem('matchStartTime')
+      localStorage.removeItem('matchInProgress')
+      return
+    }
+
+    const durationSeconds = 10
+    const completionDelaySeconds = 1
+    const elapsed = (Date.now() - startTime) / 1000
+
+    if (elapsed >= durationSeconds + completionDelaySeconds) {
+      localStorage.removeItem('matchStartTime')
+      localStorage.removeItem('matchInProgress')
+      return
+    }
+
+    setMatching(true)
+    setMatchProgress(Math.min(90, (elapsed / durationSeconds) * 90))
+
+    const progressInterval = setInterval(() => {
+      setMatchProgress((prev) => {
+        if (prev >= 90) return prev
+        return prev + Math.random() * 10
+      })
+    }, 500)
+
+    const remainingTime = Math.max(0, durationSeconds - elapsed)
+    let finalizeTimeout: ReturnType<typeof setTimeout> | null = null
+    const completeTimeout = setTimeout(() => {
+      clearInterval(progressInterval)
+      setMatchProgress(100)
+      finalizeTimeout = setTimeout(() => {
+        setMatching(false)
+        setMatchProgress(0)
+        localStorage.removeItem('matchStartTime')
+        localStorage.removeItem('matchInProgress')
+      }, completionDelaySeconds * 1000)
+    }, remainingTime * 1000)
+
+    return () => {
+      clearInterval(progressInterval)
+      clearTimeout(completeTimeout)
+      if (finalizeTimeout) {
+        clearTimeout(finalizeTimeout)
+      }
+    }
+  }, [])
+
   // Refresh matches periodically if no matches found
   useEffect(() => {
     if (items.length === 0 && !loading) {
@@ -128,7 +185,9 @@ export default function MatchesPanel() {
           body: JSON.stringify({ scholarshipId: id }),
         })
         if (response.ok) {
-          setSavedIds(new Set([...savedIds, id]))
+          const newSavedIds = new Set(savedIds)
+          newSavedIds.add(id)
+          setSavedIds(newSavedIds)
         }
       }
     } catch (error) {
@@ -145,12 +204,26 @@ export default function MatchesPanel() {
         <h2 className="text-4xl md:text-5xl font-semibold text-foreground text-center">Matches</h2>
         <div className="text-center">
           <TypingAnimation
-            text="our top picks, tailored for you..."
+            text="Our top picks, tailored for you..."
             duration={30}
             className="text-lg md:text-xl font-normal text-center text-muted-foreground leading-normal tracking-normal drop-shadow-none"
           />
         </div>
       </div>
+
+      {matching && (
+        <div className="w-full">
+          <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-gold-400 via-gold-500 to-gold-600 transition-all duration-300 ease-out"
+              style={{ width: `${matchProgress}%` }}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground mt-1 text-center">
+            Updating matches... {Math.round(matchProgress)}%
+          </p>
+        </div>
+      )}
 
       {loading ? (
         <div className="card">Loading matches...</div>
