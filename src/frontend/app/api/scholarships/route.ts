@@ -1,9 +1,9 @@
 import { getSession } from '@auth0/nextjs-auth0'
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { ObjectId } from 'mongodb'
 import { getDb } from '@/lib/db'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const session = await getSession()
   
   if (!session) {
@@ -14,7 +14,24 @@ export async function GET() {
 
   try {
     const db = await getDb()
-    const user = await db.collection('users').findOne({ auth0_id: auth0UserId })
+    const scope = request.nextUrl.searchParams.get('scope')
+
+    if (scope === 'all') {
+      const allDocs = await db.collection('scholarships').find({}).sort({ deadline: 1 }).toArray()
+      const allScholarships = allDocs.map((doc) => ({
+        scholarship_id: doc._id.toString(),
+        scholarship_name: doc.title,
+        award_amount: doc.amount,
+        match_score: null,
+        deadline: doc.deadline ?? null,
+        application_url: doc.source ?? '',
+        application_status: 'Not Started',
+        requirements: doc.eligibility ?? [],
+      }))
+      return NextResponse.json(allScholarships)
+    }
+
+    const user = await db.collection('users').findOne({ auth0_id: session.user.sub })
 
     if (!user) {
       return NextResponse.json([])

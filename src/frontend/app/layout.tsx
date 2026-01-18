@@ -1,9 +1,19 @@
 import './globals.css'
-import { Inter } from 'next/font/google'
+import { Lora, Poppins } from 'next/font/google'
 import { UserProvider } from '@auth0/nextjs-auth0/client'
 import { ThemeProvider } from '../components/theme-provider'
 
-const inter = Inter({ subsets: ['latin'] })
+const poppins = Poppins({
+  subsets: ['latin'],
+  weight: ['300', '400', '500', '600', '700'],
+  display: 'swap',
+})
+const lora = Lora({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700'],
+  display: 'swap',
+  variable: '--font-heading',
+})
 
 export const metadata = {
   title: 'grantly - Find Your Perfect Scholarship Match',
@@ -17,7 +27,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={inter.className}>
+      <body className={`${poppins.className} ${lora.variable}`}>
         <ThemeProvider
           attribute="class"
           defaultTheme="dark"

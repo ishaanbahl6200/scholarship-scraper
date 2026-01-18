@@ -13,3 +13,10 @@ export const onboardingSchema = z.object({
 })
 
 export type OnboardingInput = z.infer<typeof onboardingSchema>
+
+export const profileUpdateSchema = onboardingSchema.partial().extend({
+  gpa: z.coerce.number().min(0).max(4).nullable().optional(),
+  interests: z.array(z.string().trim().min(1)).optional(),
+})
+
+export type ProfileUpdateInput = z.infer<typeof profileUpdateSchema>
