@@ -159,32 +159,44 @@ MongoDB integration will be added by the backend team.
 
 #### Step 2: Configure Auth0 for Production (After First Deploy)
 
-After your first successful deployment, you'll get a Vercel URL like: `https://scholarship-scraper.vercel.app`
+After your first successful deployment, you'll get a **Project URL** (not the deployment URL). This is your main production URL.
+
+**Finding your Project URL:**
+- Go to Vercel Dashboard → Your Project
+- Look for the **"Domains"** section or the main URL at the top
+- It will look like: `https://scholarship-scraper.vercel.app` (this is your **Project URL**)
+- ⚠️ **Don't use** the deployment-specific URLs like `https://scholarship-scraper-git-main-username.vercel.app`
 
 1. **Update Auth0 Application Settings:**
    - Go to Auth0 Dashboard → Applications → Your Application → Settings
-   - **Allowed Callback URLs** (add your Vercel URL):
+   - **Allowed Callback URLs** (use your **Project URL**, not deployment URL):
      ```
-     http://localhost:3000/api/auth/callback, https://your-app.vercel.app/api/auth/callback
+     http://localhost:3000/api/auth/callback, https://your-project.vercel.app/api/auth/callback
      ```
    - **Allowed Logout URLs**:
      ```
-     http://localhost:3000, https://your-app.vercel.app
+     http://localhost:3000, https://your-project.vercel.app
      ```
    - **Allowed Web Origins**:
      ```
-     http://localhost:3000, https://your-app.vercel.app
+     http://localhost:3000, https://your-project.vercel.app
      ```
    - Click "Save Changes"
 
 2. **Update Vercel Environment Variables:**
    - Go to Vercel Dashboard → Your Project → Settings → Environment Variables
-   - Find `AUTH0_BASE_URL` and update it to your Vercel URL:
+   - Find `AUTH0_BASE_URL` and update it to your **Project URL**:
      ```
-     https://your-app.vercel.app
+     https://your-project.vercel.app
      ```
    - Make sure it's set for **Production** environment
    - Click "Save"
+
+**Note:** If you want to test preview deployments (PR previews), you can add a wildcard pattern to Auth0:
+```
+https://*.vercel.app/api/auth/callback
+```
+But for production, always use your specific Project URL.
 
 3. **Redeploy:**
    - Go to "Deployments" tab
