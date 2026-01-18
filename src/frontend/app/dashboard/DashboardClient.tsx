@@ -10,7 +10,7 @@ interface Scholarship {
   scholarship_name: string
   award_amount: number
   match_score: number
-  deadline: string
+  deadline: string | null
   application_url: string
   application_status: string
   requirements: any
@@ -79,12 +79,18 @@ export default function DashboardClient({ user }: { user: any }) {
     return styles[status as keyof typeof styles] || 'bg-gray-100 text-gray-800'
   }
 
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString: string | null) => {
+    if (!dateString) {
+      return 'TBD'
+    }
     const date = new Date(dateString)
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   }
 
-  const getDaysUntil = (dateString: string) => {
+  const getDaysUntil = (dateString: string | null) => {
+    if (!dateString) {
+      return null
+    }
     const date = new Date(dateString)
     const today = new Date()
     const diff = Math.ceil((date.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
@@ -231,7 +237,7 @@ export default function DashboardClient({ user }: { user: any }) {
           <div className="grid gap-6">
             {filteredScholarships.map((scholarship) => {
               const daysUntil = getDaysUntil(scholarship.deadline)
-              const isUrgent = daysUntil <= 7 && daysUntil > 0
+              const isUrgent = daysUntil !== null && daysUntil <= 7 && daysUntil > 0
 
               return (
                 <div key={scholarship.scholarship_id} className="card hover:shadow-lg transition-shadow">
@@ -267,15 +273,19 @@ export default function DashboardClient({ user }: { user: any }) {
                       </div>
 
                       <div className="flex items-center gap-4">
-                        <a
-                          href={scholarship.application_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="btn-primary text-sm py-2 px-4 inline-flex items-center gap-2"
-                        >
-                          Apply Now
-                          <ExternalLink className="h-4 w-4" />
-                        </a>
+                        {scholarship.application_url ? (
+                          <a
+                            href={scholarship.application_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="btn-primary text-sm py-2 px-4 inline-flex items-center gap-2"
+                          >
+                            Apply Now
+                            <ExternalLink className="h-4 w-4" />
+                          </a>
+                        ) : (
+                          <span className="text-sm text-gray-500">Link not available</span>
+                        )}
                         <select
                           value={scholarship.application_status}
                           onChange={(e) => updateStatus(scholarship.scholarship_id, e.target.value)}
