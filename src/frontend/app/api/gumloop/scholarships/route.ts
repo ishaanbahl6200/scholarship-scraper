@@ -2,6 +2,20 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 
 /**
+ * Handle CORS preflight requests
+ */
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, x-gumloop-secret',
+    },
+  })
+}
+
+/**
  * Bulk Import Scholarships from Gumloop
  * Used when Gumloop scrapes multiple scholarships at once
  */
