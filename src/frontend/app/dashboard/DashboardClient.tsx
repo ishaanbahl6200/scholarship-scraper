@@ -1,12 +1,13 @@
 'use client'
 
 import { useState } from 'react'
-import { Sparkles, Search, User } from 'lucide-react'
+import { Award, Sparkles, Search, User } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
+import Link from 'next/link'
 import MatchesPanel from '@/components/dashboard/MatchesPanel'
 import ScholarshipsPanel from '@/components/dashboard/ScholarshipsPanel'
 import ProfilePanel from '@/components/dashboard/ProfilePanel'
-import { NavBar } from '@/components/ui/tubelight-navbar'
+import { GlowNav } from '@/components/ui/glow-nav'
 
 const slides = [
   { name: 'Matches', icon: Sparkles },
@@ -20,10 +21,18 @@ export default function DashboardClient({ user }: { user: any }) {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="relative h-screen overflow-hidden">
+        <Link
+          href="/"
+          className="absolute left-6 top-6 z-30 inline-flex items-center gap-2 rounded-full p-2 text-foreground hover:text-foreground/80 transition-colors"
+          aria-label="Back to landing page"
+        >
+          <Award className="h-6 w-6" />
+          <span className="text-lg font-light tracking-tight">Grantly.</span>
+        </Link>
         <AnimatePresence mode="wait">
           <motion.div
             key={activeIndex}
-            className="w-screen h-full px-4 sm:px-6 lg:px-8 pb-24 pt-6"
+            className="w-screen h-full px-4 sm:px-6 lg:px-8 pb-24 pt-16"
             initial={{ opacity: 0, x: activeIndex > 0 ? 40 : -40 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: activeIndex > 0 ? -40 : 40 }}
@@ -38,7 +47,7 @@ export default function DashboardClient({ user }: { user: any }) {
         </AnimatePresence>
       </div>
 
-      <NavBar
+      <GlowNav
         items={slides.map((slide, index) => ({
           name: slide.name,
           url: `#slide-${index}`,

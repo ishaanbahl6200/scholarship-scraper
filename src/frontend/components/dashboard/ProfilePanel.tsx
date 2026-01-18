@@ -117,17 +117,17 @@ export default function ProfilePanel() {
 
   return (
     <section className="space-y-6">
-      <div>
+      <div className="text-center">
         <h2 className="text-2xl font-semibold text-foreground">Profile</h2>
         <TypingAnimation
           text="Update your onboarding details and track progress."
           duration={30}
-          className="text-sm md:text-base font-normal text-left text-muted-foreground leading-normal tracking-normal drop-shadow-none"
+          className="text-sm md:text-base font-normal text-center text-muted-foreground leading-normal tracking-normal drop-shadow-none"
         />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <div className="card lg:col-span-2 space-y-4">
+        <div className="card lg:col-span-2 space-y-4 p-3">
           <h3 className="text-lg font-semibold text-foreground">User Info</h3>
           <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-4 md:grid-cols-2">
             <div>
