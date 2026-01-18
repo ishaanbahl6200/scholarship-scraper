@@ -96,5 +96,33 @@ export async function POST(request: NextRequest) {
     console.log('Gumloop webhook not configured; skipping trigger.')
   }
 
+  // Trigger scraper workflow after profile creation/update (fire and forget)
+  try {
+    const gumloopApiKey = process.env.GUMLOOP_API_KEY
+    const gumloopScraperWorkflowId = process.env.GUMLOOP_SCRAPER_WORKFLOW_ID
+    const gumloopUserId = process.env.GUMLOOP_USER_ID
+
+    if (gumloopApiKey && gumloopScraperWorkflowId && gumloopUserId) {
+      // Trigger asynchronously (don't wait for response)
+      fetch(
+        `https://api.gumloop.com/api/v1/start_pipeline?user_id=${gumloopUserId}&saved_item_id=${gumloopScraperWorkflowId}`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${gumloopApiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({}),
+        }
+      ).catch(err => {
+        console.error('Failed to trigger scraper after onboarding:', err)
+        // Don't fail the onboarding if scraper trigger fails
+      })
+    }
+  } catch (scraperError) {
+    // Silently fail - onboarding should still succeed
+    console.error('Scraper trigger error:', scraperError)
+  }
+
   return NextResponse.json({ ok: true })
 }

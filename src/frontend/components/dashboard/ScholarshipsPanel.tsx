@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Search } from 'lucide-react'
+import { Search, RefreshCw } from 'lucide-react'
 import { TypingAnimation } from '@/components/ui/typing-animation'
 import { ScholarshipCard } from '@/lib/types'
 
@@ -30,23 +30,27 @@ export default function ScholarshipsPanel() {
   const [items, setItems] = useState<ScholarshipCard[]>([])
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(true)
+  const [scraping, setScraping] = useState(false)
+  const [scrapeProgress, setScrapeProgress] = useState(0)
+
+  const loadScholarships = async () => {
+    setLoading(true)
+    try {
+      const response = await fetch('/api/scholarships?scope=all')
+      if (!response.ok) {
+        return
+      }
+      const data = (await response.json()) as ApiScholarship[]
+      setItems(data.map(mapScholarship))
+    } catch (error) {
+      console.error('Error loading scholarships:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    const load = async () => {
-      try {
-        const response = await fetch('/api/scholarships?scope=all')
-        if (!response.ok) {
-          return
-        }
-        const data = (await response.json()) as ApiScholarship[]
-        setItems(data.map(mapScholarship))
-      } catch (error) {
-        console.error('Error loading scholarships:', error)
-      } finally {
-        setLoading(false)
-      }
-    }
-    load()
+    loadScholarships()
   }, [])
 
   const filtered = useMemo(() => {
@@ -54,17 +58,90 @@ export default function ScholarshipsPanel() {
     return items.filter((item) => item.name.toLowerCase().includes(lower))
   }, [items, query])
 
+  const handleRefresh = async () => {
+    setScraping(true)
+    setScrapeProgress(0)
+    
+    // Simulate progress (scraper typically takes 30-60 seconds)
+    const progressInterval = setInterval(() => {
+      setScrapeProgress((prev) => {
+        if (prev >= 90) return prev // Stop at 90% until completion
+        return prev + Math.random() * 5 // Increment by 0-5%
+      })
+    }, 1000)
+
+    try {
+      const response = await fetch('/api/gumloop/trigger-scraper', {
+        method: 'POST',
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        
+        // Wait for scraper to complete (poll or estimate time)
+        // For now, we'll wait ~45 seconds then refresh
+        setTimeout(async () => {
+          clearInterval(progressInterval)
+          setScrapeProgress(100)
+          
+          // Wait a bit more for backend processing
+          await new Promise(resolve => setTimeout(resolve, 2000))
+          
+          // Refresh the scholarships list
+          await loadScholarships()
+          setScraping(false)
+          setScrapeProgress(0)
+        }, 45000) // 45 seconds estimate
+      } else {
+        clearInterval(progressInterval)
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+        alert(`Failed to start scraper: ${errorData.error || 'Please try again.'}`)
+        setScraping(false)
+        setScrapeProgress(0)
+      }
+    } catch (error) {
+      clearInterval(progressInterval)
+      console.error('Error triggering scraper:', error)
+      alert('Failed to start scraper. Please try again.')
+      setScraping(false)
+      setScrapeProgress(0)
+    }
+  }
+
   return (
     <section className="space-y-4">
       <div className="flex flex-col gap-3">
-        <div>
-          <h2 className="text-2xl font-semibold text-foreground">Scholarships</h2>
-          <TypingAnimation
-            text="Browse scholarships collected from our top sources..."
-            duration={30}
-            className="text-sm md:text-base font-normal text-left text-muted-foreground leading-normal tracking-normal drop-shadow-none"
-          />
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1">
+            <h2 className="text-2xl font-semibold text-foreground">Scholarships</h2>
+            <TypingAnimation
+              text="Browse scholarships collected from our top sources..."
+              duration={30}
+              className="text-sm md:text-base font-normal text-left text-muted-foreground leading-normal tracking-normal drop-shadow-none"
+            />
+          </div>
+          <button
+            onClick={handleRefresh}
+            disabled={scraping}
+            className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+            title="Refresh scholarships"
+          >
+            <RefreshCw className={`h-5 w-5 ${scraping ? 'animate-spin' : ''}`} />
+          </button>
         </div>
+        {scraping && (
+          <div className="w-full">
+            <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+              <div
+                className="h-full bg-primary transition-all duration-300 ease-out"
+                style={{ width: `${scrapeProgress}%` }}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground mt-1 text-center">
+              Scraping scholarships... {Math.round(scrapeProgress)}%
+            </p>
+          </div>
+        )}
         <div className="relative w-full md:w-96 self-center">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <input

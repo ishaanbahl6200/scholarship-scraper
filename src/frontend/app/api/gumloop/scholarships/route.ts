@@ -107,8 +107,39 @@ export async function POST(request: NextRequest) {
       })
     )
 
-    // Insert all scholarships
-    const result = await scholarshipsCollection.insertMany(scholarshipsWithEmbeddings)
+    // Check for duplicates and only insert new scholarships
+    // Duplicate = same title AND same source URL
+    const scholarshipsToInsert: any[] = []
+    const existingScholarships = await scholarshipsCollection
+      .find({
+        $or: scholarshipsWithEmbeddings.map(doc => ({
+          title: doc.title,
+          source: doc.source,
+        }))
+      })
+      .toArray()
+
+    // Create a Set of existing scholarship keys (title + source) for fast lookup
+    const existingKeys = new Set(
+      existingScholarships.map(s => `${s.title}|||${s.source}`)
+    )
+
+    // Filter out duplicates
+    for (const doc of scholarshipsWithEmbeddings) {
+      const key = `${doc.title}|||${doc.source}`
+      if (!existingKeys.has(key)) {
+        scholarshipsToInsert.push(doc)
+      }
+    }
+
+    // Insert only new scholarships
+    let result: { insertedIds: Record<number, ObjectId>, insertedCount: number }
+    if (scholarshipsToInsert.length > 0) {
+      result = await scholarshipsCollection.insertMany(scholarshipsToInsert)
+    } else {
+      // No new scholarships to insert
+      result = { insertedIds: {}, insertedCount: 0 }
+    }
 
     // Automatically match new scholarships with all users using embeddings
     // This runs asynchronously so it doesn't block the response
@@ -121,11 +152,11 @@ export async function POST(request: NextRequest) {
       .find({ profile_embedding: { $exists: true, $ne: null } })
       .toArray()
 
-    // Match asynchronously (fire and forget)
+    // Match asynchronously (fire and forget) - only for newly inserted scholarships
     Promise.all(
       Object.values(result.insertedIds).map(async (scholarshipId, index) => {
-        const scholarship = scholarshipsWithEmbeddings[index]
-        if (!scholarship.description_embedding) return
+        const scholarship = scholarshipsToInsert[index]
+        if (!scholarship || !scholarship.description_embedding) return
 
         for (const user of users) {
           if (!user.profile_embedding) continue
@@ -168,6 +199,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       count: result.insertedCount,
+      duplicates_skipped: scholarshipsWithEmbeddings.length - scholarshipsToInsert.length,
       scholarship_ids: Object.values(result.insertedIds).map(id => id.toString()),
       matching_triggered: true,
       users_matched: users.length,

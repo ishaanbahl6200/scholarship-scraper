@@ -46,21 +46,36 @@ export async function POST(request: NextRequest) {
     const db = await getDb()
     const scholarshipsCollection = db.collection('scholarships')
 
-    // Prepare scholarship document
-    const scholarshipDoc = {
+    // Check for duplicate (same title + source URL)
+    const existingScholarship = await scholarshipsCollection.findOne({
       title: scholarship.title,
-      amount: scholarship.amount || 0,
-      deadline: scholarship.deadline ? new Date(scholarship.deadline) : undefined,
-      description: scholarship.description || '',
-      eligibility: scholarship.eligibility || [],
       source: scholarship.source || '',
-      description_embedding: scholarship.description_embedding || undefined,
-      created_at: new Date(),
-      updated_at: new Date(),
-    }
+    })
 
-    // Insert scholarship
-    const result = await scholarshipsCollection.insertOne(scholarshipDoc)
+    let scholarshipId: ObjectId
+    const isDuplicate = !!existingScholarship
+
+    if (existingScholarship) {
+      // Duplicate found - use existing scholarship ID
+      scholarshipId = existingScholarship._id
+    } else {
+      // Prepare scholarship document
+      const scholarshipDoc = {
+        title: scholarship.title,
+        amount: scholarship.amount || 0,
+        deadline: scholarship.deadline ? new Date(scholarship.deadline) : undefined,
+        description: scholarship.description || '',
+        eligibility: scholarship.eligibility || [],
+        source: scholarship.source || '',
+        description_embedding: scholarship.description_embedding || undefined,
+        created_at: new Date(),
+        updated_at: new Date(),
+      }
+
+      // Insert new scholarship
+      const result = await scholarshipsCollection.insertOne(scholarshipDoc)
+      scholarshipId = result.insertedId
+    }
 
     // If this is user-specific, create a match
     if (auth0_user_id) {
@@ -69,19 +84,28 @@ export async function POST(request: NextRequest) {
 
       if (user) {
         const matchesCollection = db.collection('matches')
-        await matchesCollection.insertOne({
+        // Check if match already exists
+        const existingMatch = await matchesCollection.findOne({
           user_id: user._id,
-          scholarship_id: result.insertedId,
-          match_score: scholarship.match_score || 0.8, // Default match score
-          reason: scholarship.match_reason || 'Matched by Gumloop workflow',
-          created_at: new Date(),
+          scholarship_id: scholarshipId,
         })
+
+        if (!existingMatch) {
+          await matchesCollection.insertOne({
+            user_id: user._id,
+            scholarship_id: scholarshipId,
+            match_score: scholarship.match_score || 0.8, // Default match score
+            reason: scholarship.match_reason || 'Matched by Gumloop workflow',
+            created_at: new Date(),
+          })
+        }
       }
     }
 
     return NextResponse.json({
       success: true,
-      scholarship_id: result.insertedId.toString(),
+      scholarship_id: scholarshipId.toString(),
+      is_duplicate: isDuplicate,
     })
   } catch (error) {
     console.error('Gumloop webhook error:', error)
