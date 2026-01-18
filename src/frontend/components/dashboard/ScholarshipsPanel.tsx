@@ -186,7 +186,9 @@ export default function ScholarshipsPanel() {
           body: JSON.stringify({ scholarshipId: id }),
         })
         if (response.ok) {
-          setSavedIds(new Set([...savedIds, id]))
+          const newSavedIds = new Set(savedIds)
+          newSavedIds.add(id)
+          setSavedIds(newSavedIds)
         }
       }
     } catch (error) {
