@@ -3,10 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint",
+    "dev": "npm --prefix src/frontend run dev",
+    "build": "npm --prefix src/frontend run build",
+    "start": "npm --prefix src/frontend run start",
+    "lint": "npm --prefix src/frontend run lint",
     "test": "vitest"
   },
   "dependencies": {

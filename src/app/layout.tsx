@@ -1,8 +1,13 @@
 import './globals.css'
-import { Inter } from 'next/font/google'
+import { Lora } from 'next/font/google'
 import AuthProvider from '@/providers/AuthProvider'
 
-const inter = Inter({ subsets: ['latin'] })
+const lora = Lora({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700'],
+  display: 'swap',
+  variable: '--font-heading',
+})
 
 export const metadata = {
   title: 'Scholarship Finder - Find Your Perfect Match',
@@ -16,7 +21,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={inter.className}>
+      <body className={`${lora.className} ${lora.variable}`}>
         <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
