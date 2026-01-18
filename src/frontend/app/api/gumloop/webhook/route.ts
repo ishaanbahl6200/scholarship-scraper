@@ -59,10 +59,23 @@ export async function POST(request: NextRequest) {
       // Duplicate found - use existing scholarship ID
       scholarshipId = existingScholarship._id
     } else {
+      // Normalize amount - handle if it's a string with dollar sign or number
+      let normalizedAmount = 0
+      if (scholarship.amount) {
+        if (typeof scholarship.amount === 'number') {
+          normalizedAmount = scholarship.amount > 0 ? scholarship.amount : 0
+        } else if (typeof scholarship.amount === 'string') {
+          // Remove dollar signs, commas, and extract number
+          const cleaned = scholarship.amount.replace(/[^0-9.]/g, '')
+          const parsed = parseFloat(cleaned)
+          normalizedAmount = parsed > 0 ? parsed : 0
+        }
+      }
+      
       // Prepare scholarship document
       const scholarshipDoc = {
         title: scholarship.title,
-        amount: scholarship.amount || 0,
+        amount: normalizedAmount,
         deadline: scholarship.deadline ? new Date(scholarship.deadline) : undefined,
         description: scholarship.description || '',
         eligibility: scholarship.eligibility || [],

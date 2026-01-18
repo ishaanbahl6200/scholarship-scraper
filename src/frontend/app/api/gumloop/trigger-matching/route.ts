@@ -367,8 +367,8 @@ export async function POST(request: NextRequest) {
         let matchReason = ''
 
         if (isUniversalMatch) {
-          // Universal match - give it a high score (0.95) and match it
-          similarity = 0.95
+          // Universal match - give it a perfect score (1.0) and match it
+          similarity = 1.0
           shouldMatch = true
           matchReason = 'Universal match - open to all Canadian students'
           console.log(`[Matching] ✅ Universal match found: "${scholarship.title}" for user ${auth0UserId}`)

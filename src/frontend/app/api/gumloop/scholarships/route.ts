@@ -254,17 +254,32 @@ export async function POST(request: NextRequest) {
     const matchesCollection = db.collection('matches')
 
     // Prepare documents
-    const docs = scholarships.map((scholarship: any) => ({
-      title: scholarship.title,
-      amount: scholarship.amount || 0,
-      deadline: scholarship.deadline ? new Date(scholarship.deadline) : undefined,
-      description: scholarship.description || '',
-      eligibility: scholarship.eligibility || [],
-      source: scholarship.source || '',
-      description_embedding: scholarship.description_embedding || undefined,
-      created_at: new Date(),
-      updated_at: new Date(),
-    }))
+    const docs = scholarships.map((scholarship: any) => {
+      // Normalize amount - handle if it's a string with dollar sign or number
+      let normalizedAmount = 0
+      if (scholarship.amount) {
+        if (typeof scholarship.amount === 'number') {
+          normalizedAmount = scholarship.amount > 0 ? scholarship.amount : 0
+        } else if (typeof scholarship.amount === 'string') {
+          // Remove dollar signs, commas, and extract number
+          const cleaned = scholarship.amount.replace(/[^0-9.]/g, '')
+          const parsed = parseFloat(cleaned)
+          normalizedAmount = parsed > 0 ? parsed : 0
+        }
+      }
+      
+      return {
+        title: scholarship.title,
+        amount: normalizedAmount,
+        deadline: scholarship.deadline ? new Date(scholarship.deadline) : undefined,
+        description: scholarship.description || '',
+        eligibility: scholarship.eligibility || [],
+        source: scholarship.source || '',
+        description_embedding: scholarship.description_embedding || undefined,
+        created_at: new Date(),
+        updated_at: new Date(),
+      }
+    })
 
     // Generate embeddings for scholarships that don't have them
     const scholarshipsWithEmbeddings = await Promise.all(
@@ -358,7 +373,7 @@ export async function POST(request: NextRequest) {
               let matchReason = ''
               
               if (isUniversalMatch) {
-                similarity = 0.95
+                similarity = 1.0
                 shouldMatch = true
                 matchReason = 'Universal match - open to all Canadian students'
               } else if (scholarship.description_embedding && user.profile_embedding) {

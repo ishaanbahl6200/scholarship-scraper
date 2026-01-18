@@ -10,8 +10,8 @@ import ProfilePanel from '@/components/dashboard/ProfilePanel'
 import { GlowNav } from '@/components/ui/glow-nav'
 
 const slides = [
-  { name: 'Matches', icon: Sparkles },
   { name: 'Scholarships', icon: Search },
+  { name: 'Matches', icon: Sparkles },
   { name: 'Profile', icon: User },
 ]
 
@@ -31,15 +31,15 @@ export default function DashboardClient({ user }: { user: any }) {
         <AnimatePresence mode="wait">
           <motion.div
             key={activeIndex}
-            className="w-screen h-full px-4 sm:px-6 lg:px-8 pb-24 pt-16"
+            className="w-screen h-full px-4 sm:px-6 lg:px-8 pb-32 pt-16"
             initial={{ opacity: 0, x: activeIndex > 0 ? 40 : -40 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: activeIndex > 0 ? -40 : 40 }}
             transition={{ type: 'spring', stiffness: 120, damping: 20 }}
           >
             <div className="max-w-7xl mx-auto h-full">
-              {activeIndex === 0 && <MatchesPanel />}
-              {activeIndex === 1 && <ScholarshipsPanel />}
+              {activeIndex === 0 && <ScholarshipsPanel />}
+              {activeIndex === 1 && <MatchesPanel />}
               {activeIndex === 2 && <ProfilePanel />}
             </div>
           </motion.div>

@@ -96,7 +96,7 @@ export async function GET(request: NextRequest) {
         .find({ _id: { $in: scholarshipIds } })
         .toArray()
 
-      // Create a map of scholarship_id to match data (including application_status)
+      // Create a map of scholarship_id to match data (including application_status and reason)
       const matchMap = new Map(
         matches.map((match) => [match.scholarship_id.toString(), match])
       )
@@ -112,6 +112,7 @@ export async function GET(request: NextRequest) {
           application_url: doc.source || '',
           application_status: match?.application_status || 'Not Started',
           requirements: doc.eligibility || [],
+          match_reason: match?.reason || null,
         }
       })
       

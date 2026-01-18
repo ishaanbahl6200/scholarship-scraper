@@ -42,13 +42,14 @@ export function GlowNav({ items, className, onSelect }: GlowNavProps) {
     target.classList.add("active");
 
     const width = target.offsetWidth;
-    const { left } = target.getBoundingClientRect();
+    const { left, width: buttonWidth } = target.getBoundingClientRect();
     const navLeft = nav.getBoundingClientRect().left;
     const offsetLeft = left - navLeft;
+    const centerPosition = offsetLeft + buttonWidth / 2;
 
     nav.style.setProperty("--after-bg-position", `${offsetLeft}`);
-    nav.style.setProperty("--after-radial-bg-position", `${offsetLeft + width / 2}`);
-    nav.style.setProperty("--after-bg-width", `${width}`);
+    nav.style.setProperty("--after-bg-width", `${buttonWidth}`);
+    nav.style.setProperty("--after-radial-bg-position", `${centerPosition}`);
   };
 
   useEffect(() => {
