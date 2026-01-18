@@ -26,7 +26,16 @@ export async function GET() {
       .sort({ match_score: -1 })
       .toArray()
 
-    let scholarships = []
+    let scholarships: Array<{
+      scholarship_id: string
+      scholarship_name: string
+      award_amount: number
+      match_score: number
+      deadline: string | null
+      application_url: string
+      application_status: string
+      requirements: string[]
+    }> = []
     if (matches.length > 0) {
       const scholarshipIds = matches.map((match) => match.scholarship_id as ObjectId)
       const scholarshipDocs = await db
