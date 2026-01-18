@@ -71,12 +71,12 @@ export default function MatchesPanel() {
 
   return (
     <section className="space-y-4">
-      <div>
+      <div className="text-center">
         <h2 className="text-2xl font-semibold text-foreground">Matches</h2>
         <TypingAnimation
           text="our top picks, tailored for you..."
           duration={30}
-          className="text-sm md:text-base font-normal text-left text-muted-foreground leading-normal tracking-normal drop-shadow-none"
+          className="text-sm md:text-base font-normal text-center text-muted-foreground leading-normal tracking-normal drop-shadow-none"
         />
       </div>
 
