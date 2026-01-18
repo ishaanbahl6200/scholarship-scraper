@@ -11,19 +11,19 @@ export default async function Home() {
   return (
     <div className="min-h-screen w-screen flex flex-col relative overflow-hidden">
       {/* Dot Shader Background - Full page coverage */}
-      <div className="fixed inset-0 z-0">
+      <div className="fixed inset-0 z-0 pointer-events-auto">
         <DotScreenShader />
       </div>
 
       {/* Navigation */}
-      <nav className="relative z-20 pointer-events-auto">
+      <nav className="relative z-20 pointer-events-none">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-2 pointer-events-auto">
               <Award className="h-6 w-6 text-white" />
               <span className="text-lg font-light tracking-tight text-white">Grantly.</span>
             </div>
-            <div className="flex items-center">
+            <div className="flex items-center pointer-events-auto">
               <Link 
                 href="/api/auth/login" 
                 className="p-2 text-white/80 hover:text-white transition-colors rounded-full hover:bg-white/10"
@@ -37,7 +37,7 @@ export default async function Home() {
       </nav>
 
       {/* Hero Section */}
-      <main className="flex-1 flex items-center justify-center relative z-10 px-4 sm:px-6 lg:px-8 min-h-[80vh]">
+      <main className="flex-1 flex items-center justify-center relative z-10 px-4 sm:px-6 lg:px-8 min-h-[80vh] pointer-events-none">
         <div className="max-w-5xl mx-auto text-center space-y-8 w-full">
           <h1 className="text-6xl md:text-7xl lg:text-8xl font-light tracking-tight text-white mix-blend-exclusion pointer-events-none select-none">
             Find Your Perfect
@@ -68,7 +68,7 @@ export default async function Home() {
       </main>
 
       {/* Features Section - Minimalist */}
-      <section id="how-it-works" className="relative z-10 py-32 px-4 sm:px-6 lg:px-8">
+      <section id="how-it-works" className="relative z-10 py-32 px-4 sm:px-6 lg:px-8 pointer-events-none">
         <div className="max-w-6xl mx-auto">
           <div className="grid md:grid-cols-3 gap-16">
             <div className="text-center space-y-4 pointer-events-none select-none">
@@ -99,8 +99,8 @@ export default async function Home() {
       </section>
 
       {/* Footer - Minimalist */}
-      <footer className="relative z-10 border-t border-white/10 py-8 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center pointer-events-none select-none">
+      <footer className="relative z-10 border-t border-white/10 py-8 px-4 sm:px-6 lg:px-8 pointer-events-none">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center select-none">
           <div className="flex items-center space-x-2 mb-4 md:mb-0">
             <Award className="h-5 w-5 text-white/60" />
             <span className="text-sm font-light text-white/60">grantly</span>
