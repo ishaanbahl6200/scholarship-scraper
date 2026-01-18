@@ -123,6 +123,34 @@ export async function PUT(request: NextRequest) {
     }
 
     const data = await response.json()
+
+    // Trigger Gumloop matching workflow after profile update
+    try {
+      const gumloopApiKey = process.env.GUMLOOP_API_KEY
+      const gumloopWorkflowId = process.env.GUMLOOP_MATCHING_WORKFLOW_ID
+      
+      if (gumloopApiKey && gumloopWorkflowId) {
+        // Trigger asynchronously (don't wait for response)
+        fetch(`https://api.gumloop.ai/v1/workflows/${gumloopWorkflowId}/trigger`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${gumloopApiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            user_id: auth0UserId,
+            trigger: 'profile_update',
+          }),
+        }).catch(err => {
+          console.error('Failed to trigger Gumloop workflow:', err)
+          // Don't fail the profile update if Gumloop fails
+        })
+      }
+    } catch (gumloopError) {
+      // Silently fail - profile update should still succeed
+      console.error('Gumloop trigger error:', gumloopError)
+    }
+
     return NextResponse.json(data[0])
   } catch (error) {
     console.error('Error saving profile:', error)

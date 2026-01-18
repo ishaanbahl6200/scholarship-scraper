@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useUser } from '@auth0/nextjs-auth0/client'
-import { GraduationCap, Calendar, DollarSign, TrendingUp, Filter, Search, ExternalLink, Clock } from 'lucide-react'
+import { GraduationCap, Calendar, DollarSign, TrendingUp, Filter, Search, ExternalLink, Clock, RefreshCw, Download } from 'lucide-react'
 import Link from 'next/link'
 
 interface Scholarship {
@@ -20,6 +20,8 @@ export default function DashboardClient({ user }: { user: any }) {
   const { user: authUser } = useUser()
   const [scholarships, setScholarships] = useState<Scholarship[]>([])
   const [loading, setLoading] = useState(true)
+  const [resyncing, setResyncing] = useState(false)
+  const [scraping, setScraping] = useState(false)
   const [filter, setFilter] = useState('all')
   const [searchQuery, setSearchQuery] = useState('')
 
@@ -51,6 +53,59 @@ export default function DashboardClient({ user }: { user: any }) {
       fetchScholarships()
     } catch (error) {
       console.error('Error updating status:', error)
+    }
+  }
+
+  const handleResync = async () => {
+    setResyncing(true)
+    try {
+      const response = await fetch('/api/gumloop/trigger-matching', {
+        method: 'POST',
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        // Wait a bit for Gumloop to process, then refresh scholarships
+        setTimeout(() => {
+          fetchScholarships()
+          setResyncing(false)
+        }, 2000)
+      } else {
+        setResyncing(false)
+        alert('Failed to resync. Please try again.')
+      }
+    } catch (error) {
+      console.error('Error resyncing:', error)
+      setResyncing(false)
+      alert('Failed to resync. Please try again.')
+    }
+  }
+
+  const handleScrape = async () => {
+    setScraping(true)
+    try {
+      const response = await fetch('/api/gumloop/trigger-scraper', {
+        method: 'POST',
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        console.log('Scraper workflow triggered:', data)
+        alert(`Scraper workflow started! Run ID: ${data.workflow_run_id || 'N/A'}\n\nCheck Gumloop dashboard to see the workflow running.`)
+        // Wait a bit for Gumloop to process, then refresh scholarships
+        setTimeout(() => {
+          fetchScholarships()
+          setScraping(false)
+        }, 5000) // Give scraper more time since it needs to scrape and process
+      } else {
+        const errorData = await response.json()
+        setScraping(false)
+        alert(`Failed to start scraper: ${errorData.error || 'Unknown error'}`)
+      }
+    } catch (error) {
+      console.error('Error triggering scraper:', error)
+      setScraping(false)
+      alert('Failed to start scraper. Please try again.')
     }
   }
 
@@ -115,11 +170,31 @@ export default function DashboardClient({ user }: { user: any }) {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Welcome Section */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            Welcome back, {authUser?.name || 'Student'}! 👋
-          </h1>
-          <p className="text-gray-600">Here are your matched scholarships</p>
+        <div className="mb-8 flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">
+              Welcome back, {authUser?.name || 'Student'}! 👋
+            </h1>
+            <p className="text-gray-600">Here are your matched scholarships</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleScrape}
+              disabled={scraping}
+              className="btn-primary inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed bg-green-600 hover:bg-green-700"
+            >
+              <Download className={`h-4 w-4 ${scraping ? 'animate-spin' : ''}`} />
+              {scraping ? 'Scraping...' : 'Scrape Scholarships'}
+            </button>
+            <button
+              onClick={handleResync}
+              disabled={resyncing}
+              className="btn-primary inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <RefreshCw className={`h-4 w-4 ${resyncing ? 'animate-spin' : ''}`} />
+              {resyncing ? 'Resyncing...' : 'Resync Matches'}
+            </button>
+          </div>
         </div>
 
         {/* Stats Cards */}
