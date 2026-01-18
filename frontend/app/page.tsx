@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { Award, ArrowRight, User } from 'lucide-react'
 import dynamic from 'next/dynamic'
 
-const DotScreenShader = dynamic(() => import('@/components/ui/dot-shader-background').then(mod => ({ default: mod.DotScreenShader })), {
+const DotScreenShader = dynamic(() => import('../components/ui/dot-shader-background').then(mod => ({ default: mod.DotScreenShader })), {
   ssr: false,
   loading: () => <div className="fixed inset-0 bg-[#121212]" />
 })
