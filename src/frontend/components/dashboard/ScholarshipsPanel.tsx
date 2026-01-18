@@ -32,6 +32,8 @@ export default function ScholarshipsPanel() {
   const [loading, setLoading] = useState(true)
   const [scraping, setScraping] = useState(false)
   const [scrapeProgress, setScrapeProgress] = useState(0)
+  const [matching, setMatching] = useState(false)
+  const [matchProgress, setMatchProgress] = useState(0)
   const [lastScrapeTime, setLastScrapeTime] = useState<string | null>(null)
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set())
 
@@ -56,6 +58,46 @@ export default function ScholarshipsPanel() {
       console.error('Error loading scholarships:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleMatching = async () => {
+    setMatching(true)
+    setMatchProgress(0)
+
+    const matchProgressInterval = setInterval(() => {
+      setMatchProgress((prev) => {
+        if (prev >= 90) return prev
+        return prev + Math.random() * 10
+      })
+    }, 500)
+
+    try {
+      const response = await fetch('/api/gumloop/trigger-matching', {
+        method: 'POST',
+      })
+
+      if (response.ok) {
+        setTimeout(() => {
+          clearInterval(matchProgressInterval)
+          setMatchProgress(100)
+          setTimeout(() => {
+            setMatching(false)
+            setMatchProgress(0)
+          }, 1000)
+        }, 10000)
+      } else {
+        clearInterval(matchProgressInterval)
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+        console.error(`Failed to update matches: ${errorData.error || 'Please try again.'}`)
+        setMatching(false)
+        setMatchProgress(0)
+      }
+    } catch (error) {
+      clearInterval(matchProgressInterval)
+      console.error('Error triggering matching:', error)
+      setMatching(false)
+      setMatchProgress(0)
     }
   }
 
@@ -102,8 +144,7 @@ export default function ScholarshipsPanel() {
           localStorage.removeItem('scrapeWorkflowId')
           localStorage.setItem('lastScrapeTime', new Date().toISOString())
           setLastScrapeTime(new Date().toISOString())
-          // Matching happens automatically when scholarships are added via /api/gumloop/scholarships
-          // No need to manually trigger it here
+          handleMatching()
         }, remainingTime * 1000)
         
         // Cleanup on unmount
@@ -200,9 +241,7 @@ export default function ScholarshipsPanel() {
           localStorage.removeItem('scrapeWorkflowId')
           localStorage.setItem('lastScrapeTime', new Date().toISOString())
           setLastScrapeTime(new Date().toISOString())
-          
-          // Matching happens automatically when scholarships are added via /api/gumloop/scholarships
-          // No need to manually trigger it here
+          await handleMatching()
         }, 45000) // 45 seconds estimate
       } else {
         clearInterval(scrapeProgressInterval)
@@ -225,16 +264,16 @@ export default function ScholarshipsPanel() {
   }
 
   return (
-    <section className="space-y-4">
+    <section className="space-y-4 relative">
       <div className="flex flex-col gap-3">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex-1">
+        <div className="relative">
+          <div className="text-center">
             <h2 className="text-2xl font-semibold text-foreground">Scholarships</h2>
             <div>
               <TypingAnimation
                 text="Browse scholarships collected from our top sources..."
                 duration={30}
-                className="text-sm md:text-base font-normal text-left text-muted-foreground leading-normal tracking-normal drop-shadow-none"
+                className="text-sm md:text-base font-normal text-center text-muted-foreground leading-normal tracking-normal drop-shadow-none"
               />
               {lastScrapeTime && (
                 <p className="text-xs text-muted-foreground mt-1">
@@ -243,14 +282,25 @@ export default function ScholarshipsPanel() {
               )}
             </div>
           </div>
-          <button
-            onClick={handleRefresh}
-            disabled={scraping}
-            className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
-            title="Refresh scholarships"
-          >
-            <RefreshCw className={`h-5 w-5 ${scraping ? 'animate-spin' : ''}`} />
-          </button>
+          <div className="fixed right-6 top-6 z-30 flex items-center gap-3">
+            <div className="relative w-56 sm:w-64 md:w-72">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search scholarships"
+                className="w-full px-4 py-3 pl-9 border border-white/70 rounded-lg bg-transparent text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-0"
+              />
+            </div>
+            <button
+              onClick={handleRefresh}
+              disabled={scraping || matching}
+              className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+              title="Refresh scholarships and update matches"
+            >
+              <RefreshCw className={`h-5 w-5 ${scraping || matching ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
         </div>
         {scraping && (
           <div className="w-full">
@@ -265,15 +315,19 @@ export default function ScholarshipsPanel() {
             </p>
           </div>
         )}
-        <div className="relative w-full md:w-96 self-center">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search scholarships"
-            className="input-field pl-9"
-          />
-        </div>
+        {matching && (
+          <div className="w-full">
+            <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+              <div
+                className="h-full bg-primary transition-all duration-300 ease-out"
+                style={{ width: `${matchProgress}%` }}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground mt-1 text-center">
+              Updating matches... {Math.round(matchProgress)}%
+            </p>
+          </div>
+        )}
       </div>
 
       {loading ? (

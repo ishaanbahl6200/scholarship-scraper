@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useRouter } from 'next/navigation'
@@ -196,11 +196,14 @@ const programOptions = [
   { value: 'Other', label: 'Other', group: '' },
 ]
 
-type Step = 0 | 1 | 2 | 3
-
-export default function OnboardingForm({ defaultValues }: { defaultValues: Partial<OnboardingInput> }) {
+export default function OnboardingForm({
+  defaultValues,
+  onBack,
+}: {
+  defaultValues: Partial<OnboardingInput>
+  onBack: () => void
+}) {
   const router = useRouter()
-  const [step, setStep] = useState<Step>(0)
   const [interestInput, setInterestInput] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -224,8 +227,6 @@ export default function OnboardingForm({ defaultValues }: { defaultValues: Parti
 
   const fields = form.watch()
 
-  const stepTitles = useMemo(() => ['Academic Info', 'Location', 'Demographics', 'Interests'], [])
-
   const addInterest = () => {
     const trimmed = interestInput.trim()
     if (!trimmed) {
@@ -242,6 +243,10 @@ export default function OnboardingForm({ defaultValues }: { defaultValues: Parti
   }
 
   const onSubmit = async (values: OnboardingInput) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/c9031b23-9f97-4d5f-a63f-0506ad990180',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'D',location:'components/onboarding/OnboardingForm.tsx:208',message:'Finish submit triggered',data:{hasValues:!!values},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion agent log
+    console.log('finish clicked', values)
     setSubmitting(true)
     setError(null)
     try {
@@ -262,184 +267,192 @@ export default function OnboardingForm({ defaultValues }: { defaultValues: Parti
     }
   }
 
-  const nextStep = async () => {
-    const toValidate: Record<Step, (keyof OnboardingInput)[]> = {
-      0: ['name', 'school', 'program', 'gpa'],
-      1: ['province', 'citizenship'],
-      2: ['ethnicity', 'demographics'],
-      3: ['interests'],
-    }
-    const valid = await form.trigger(toValidate[step])
-    if (valid && step < 3) {
-      setStep((step + 1) as Step)
-    }
-  }
-
-  const prevStep = () => {
-    if (step > 0) {
-      setStep((step - 1) as Step)
-    }
+  const onError = (errors: typeof form.formState.errors) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/c9031b23-9f97-4d5f-a63f-0506ad990180',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'E',location:'components/onboarding/OnboardingForm.tsx:248',message:'Form submit blocked by validation',data:{errorKeys:Object.keys(errors)},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion agent log
+    console.log('submit blocked', Object.keys(errors))
   }
 
   return (
-    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold text-gray-900">{stepTitles[step]}</h2>
-        <span className="text-sm text-gray-500">
-          Step {step + 1} of {stepTitles.length}
-        </span>
+    <form
+      onSubmit={form.handleSubmit(onSubmit, onError)}
+      className="space-y-6 p-6 w-full max-w-3xl mx-auto"
+    >
+      <div className="max-h-[70vh] overflow-y-auto pr-6 space-y-10 simple-scrollbar">
+        <section className="space-y-4">
+          <h2 className="text-xl font-semibold text-white">Academic Info</h2>
+          <div className="grid md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-sm font-medium text-white/80 mb-2">
+                Full Name <span className="text-white">*</span>
+              </label>
+              <input className="input-field" {...form.register('name')} />
+              <p className="text-sm text-red-600 mt-1">{form.formState.errors.name?.message}</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-white/80 mb-2">
+                School <span className="text-white">*</span>
+              </label>
+              <SearchableSelect
+                options={schoolOptions}
+                value={form.watch('school') || ''}
+                onChange={(value) => form.setValue('school', value, { shouldValidate: true, shouldDirty: true })}
+                placeholder="Search or select school"
+              />
+              <p className="text-sm text-red-600 mt-1">{form.formState.errors.school?.message}</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-white/80 mb-2">
+                Program <span className="text-white">*</span>
+              </label>
+              <SearchableSelect
+                options={programOptions}
+                value={form.watch('program') || ''}
+                onChange={(value) => form.setValue('program', value, { shouldValidate: true, shouldDirty: true })}
+                placeholder="Search or select program"
+              />
+              <p className="text-sm text-red-600 mt-1">{form.formState.errors.program?.message}</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-white/80 mb-2">
+                GPA <span className="text-white">*</span>
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                max="4"
+                className="input-field"
+                {...form.register('gpa', { valueAsNumber: true })}
+              />
+              <p className="text-sm text-red-600 mt-1">{form.formState.errors.gpa?.message}</p>
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-4">
+          <h2 className="text-xl font-semibold text-white">Location</h2>
+          <div className="grid md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-sm font-medium text-white/80 mb-2">
+                Province <span className="text-white">*</span>
+              </label>
+              <select className="input-field" {...form.register('province')}>
+                <option value="">Select province</option>
+                {provinceOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <p className="text-sm text-red-600 mt-1">{form.formState.errors.province?.message}</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-white/80 mb-2">
+                Citizenship <span className="text-white">*</span>
+              </label>
+              <select className="input-field" {...form.register('citizenship')}>
+                <option value="">Select citizenship</option>
+                {citizenshipOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <p className="text-sm text-red-600 mt-1">{form.formState.errors.citizenship?.message}</p>
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-4">
+          <h2 className="text-xl font-semibold text-white">Demographics</h2>
+          <div className="grid md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-sm font-medium text-white/80 mb-2">
+                Ethnicity <span className="text-white">*</span>
+              </label>
+              <select className="input-field" {...form.register('ethnicity')}>
+                <option value="">Select ethnicity</option>
+                {ethnicityOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <p className="text-sm text-red-600 mt-1">{form.formState.errors.ethnicity?.message}</p>
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-4">
+          <h2 className="text-xl font-semibold text-white">
+            Interests <span className="text-white">*</span>
+          </h2>
+          <div className="space-y-4">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                className="input-field flex-1"
+                placeholder="Add an interest (e.g., STEM, volunteer, athletics)"
+                value={interestInput}
+                onChange={(event) => setInterestInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    addInterest()
+                  }
+                }}
+              />
+            </div>
+            <p className="text-sm text-red-600">{form.formState.errors.interests?.message as string}</p>
+            <div className="flex flex-wrap gap-2">
+              {fields.interests?.map((interest, index) => (
+                <span key={`${interest}-${index}`} className="badge bg-primary-100 text-primary-800">
+                  {interest}
+                  <button
+                    type="button"
+                    className="ml-2 text-primary-600"
+                    onClick={() => removeInterest(index)}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          </div>
+        </section>
       </div>
-
-      {step === 0 && (
-        <div className="grid md:grid-cols-2 gap-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Full Name</label>
-            <input className="input-field" {...form.register('name')} />
-            <p className="text-sm text-red-600 mt-1">{form.formState.errors.name?.message}</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">School</label>
-            <SearchableSelect
-              options={schoolOptions}
-              value={form.watch('school') || ''}
-              onChange={(value) => form.setValue('school', value, { shouldValidate: true, shouldDirty: true })}
-              placeholder="Search or select school"
-            />
-            <p className="text-sm text-red-600 mt-1">{form.formState.errors.school?.message}</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Program</label>
-            <SearchableSelect
-              options={programOptions}
-              value={form.watch('program') || ''}
-              onChange={(value) => form.setValue('program', value, { shouldValidate: true, shouldDirty: true })}
-              placeholder="Search or select program"
-            />
-            <p className="text-sm text-red-600 mt-1">{form.formState.errors.program?.message}</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">GPA</label>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              max="4"
-              className="input-field"
-              {...form.register('gpa', { valueAsNumber: true })}
-            />
-            <p className="text-sm text-red-600 mt-1">{form.formState.errors.gpa?.message}</p>
-          </div>
-        </div>
-      )}
-
-      {step === 1 && (
-        <div className="grid md:grid-cols-2 gap-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Province</label>
-            <select className="input-field" {...form.register('province')}>
-              <option value="">Select province</option>
-              {provinceOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-            <p className="text-sm text-red-600 mt-1">{form.formState.errors.province?.message}</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Citizenship</label>
-            <select className="input-field" {...form.register('citizenship')}>
-              <option value="">Select citizenship</option>
-              {citizenshipOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-            <p className="text-sm text-red-600 mt-1">{form.formState.errors.citizenship?.message}</p>
-          </div>
-        </div>
-      )}
-
-      {step === 2 && (
-        <div className="grid md:grid-cols-2 gap-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Ethnicity</label>
-            <select className="input-field" {...form.register('ethnicity')}>
-              <option value="">Select ethnicity</option>
-              {ethnicityOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-            <p className="text-sm text-red-600 mt-1">{form.formState.errors.ethnicity?.message}</p>
-          </div>
-          <div className="md:col-span-2">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Demographics (optional)
-            </label>
-            <textarea className="input-field min-h-[120px]" {...form.register('demographics')} />
-            <p className="text-xs text-gray-500 mt-1">
-              Add extra details like community involvement, awards, or financial need.
-            </p>
-          </div>
-        </div>
-      )}
-
-      {step === 3 && (
-        <div className="space-y-4">
-          <div className="flex gap-2">
-            <input
-              type="text"
-              className="input-field flex-1"
-              placeholder="Add an interest (e.g., STEM, volunteer, athletics)"
-              value={interestInput}
-              onChange={(event) => setInterestInput(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault()
-                  addInterest()
-                }
-              }}
-            />
-            <button type="button" className="btn-primary" onClick={addInterest}>
-              Add
-            </button>
-          </div>
-          <p className="text-sm text-red-600">{form.formState.errors.interests?.message as string}</p>
-          <div className="flex flex-wrap gap-2">
-            {fields.interests?.map((interest, index) => (
-              <span key={`${interest}-${index}`} className="badge bg-primary-100 text-primary-800">
-                {interest}
-                <button
-                  type="button"
-                  className="ml-2 text-primary-600"
-                  onClick={() => removeInterest(index)}
-                >
-                  ×
-                </button>
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
 
       {error && <p className="text-sm text-red-600">{error}</p>}
 
       <div className="flex items-center justify-between">
-        <button type="button" onClick={prevStep} className="btn-secondary" disabled={step === 0}>
+        <button
+          type="button"
+          className="input-field w-auto px-8 py-3 bg-black border-white/10 text-white/80 hover:bg-[#1f1f1f] hover:text-white transition"
+          onClick={onBack}
+        >
           Back
         </button>
-        {step < 3 ? (
-          <button type="button" onClick={nextStep} className="btn-primary">
-            Continue
-          </button>
-        ) : (
-          <button type="submit" className="btn-primary" disabled={submitting}>
-            {submitting ? 'Submitting...' : 'Finish'}
-          </button>
-        )}
+        <button
+          type="submit"
+          className="input-field w-auto px-8 py-3 bg-black border-white/10 text-white/80 hover:bg-[#1f1f1f] hover:text-white transition"
+          disabled={submitting}
+          onClick={() => {
+            const trimmed = interestInput.trim()
+            if (trimmed) {
+              const current = form.getValues('interests') || []
+              form.setValue('interests', [...current, trimmed], { shouldValidate: true })
+              setInterestInput('')
+            }
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/c9031b23-9f97-4d5f-a63f-0506ad990180',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'F',location:'components/onboarding/OnboardingForm.tsx:293',message:'Finish button clicked',data:{disabled:submitting},timestamp:Date.now()})}).catch(()=>{});
+            // #endregion agent log
+            console.log('finish button clicked', { disabled: submitting })
+          }}
+        >
+          {submitting ? 'Submitting...' : 'Finish'}
+        </button>
       </div>
     </form>
   )
