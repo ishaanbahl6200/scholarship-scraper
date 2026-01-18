@@ -26,7 +26,12 @@ const citizenshipOptions = ['Canadian Citizen', 'Permanent Resident', 'Internati
 
 type Step = 0 | 1 | 2 | 3
 
-export default function OnboardingForm({ defaultValues }: { defaultValues: Partial<OnboardingInput> }) {
+export default function OnboardingForm({
+  defaultValues,
+}: {
+  defaultValues: Partial<OnboardingInput>
+  onBack?: () => void
+}) {
   const router = useRouter()
   const [step, setStep] = useState<Step>(0)
   const [interestInput, setInterestInput] = useState('')
