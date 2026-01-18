@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Award, Sparkles, Search, User } from 'lucide-react'
+import { Sparkles, Search, User } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
 import Link from 'next/link'
 import MatchesPanel from '@/components/dashboard/MatchesPanel'
@@ -26,8 +26,7 @@ export default function DashboardClient({ user }: { user: any }) {
           className="absolute left-6 top-6 z-30 inline-flex items-center gap-2 rounded-full p-2 text-foreground hover:text-foreground/80 transition-colors"
           aria-label="Back to landing page"
         >
-          <Award className="h-6 w-6" />
-          <span className="text-lg font-light tracking-tight">Grantly.</span>
+          <span className="text-2xl font-light tracking-tight">Grantly.</span>
         </Link>
         <AnimatePresence mode="wait">
           <motion.div

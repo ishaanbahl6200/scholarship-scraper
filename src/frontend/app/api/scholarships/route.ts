@@ -69,9 +69,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json([])
     }
 
+    // Only get matches that meet the minimum threshold (50%)
     const matches = await db
       .collection('matches')
-      .find({ user_id: user._id })
+      .find({ 
+        user_id: user._id,
+        match_score: { $gte: 0.5 } // Only matches with at least 50% similarity
+      })
       .sort({ match_score: -1 })
       .toArray()
 

@@ -20,6 +20,120 @@ function cosineSimilarity(a: number[], b: number[]): number {
 }
 
 /**
+ * Check if scholarship matches user's program of study
+ * This is a priority check - scholarships that don't match the program should be excluded
+ */
+function matchesProgramOfStudy(scholarship: any, user: any): boolean {
+  if (!user.program || !user.program.trim()) {
+    // If user hasn't specified a program, allow all scholarships
+    return true
+  }
+
+  const userProgram = user.program.toLowerCase()
+  const title = (scholarship.title || '').toLowerCase()
+  const description = (scholarship.description || '').toLowerCase()
+  const eligibility = Array.isArray(scholarship.eligibility) 
+    ? scholarship.eligibility.join(' ').toLowerCase()
+    : (scholarship.eligibility || '').toLowerCase()
+  
+  const combinedText = `${title} ${description} ${eligibility}`
+
+  // Normalize program names for matching
+  const programVariations: Record<string, string[]> = {
+    'computer science': ['computer science', 'cs', 'computing', 'software', 'programming', 'computer engineering', 'software engineering'],
+    'engineering': ['engineering', 'engineer'],
+    'business': ['business', 'commerce', 'finance', 'accounting', 'marketing', 'management'],
+    'medicine': ['medicine', 'medical', 'health', 'healthcare'],
+    'law': ['law', 'legal', 'jurisprudence'],
+    'education': ['education', 'teaching', 'pedagogy'],
+    'arts': ['arts', 'art', 'fine arts', 'humanities'],
+    'science': ['science', 'biology', 'chemistry', 'physics', 'mathematics'],
+  }
+
+  // Check if scholarship explicitly mentions the program or related terms
+  const programKeywords = programVariations[userProgram] || [userProgram]
+  const hasProgramMatch = programKeywords.some(keyword => combinedText.includes(keyword))
+
+  // Also check for exclusion keywords - if scholarship mentions a different field, exclude it
+  // This is stricter: if scholarship explicitly mentions fields that don't match, exclude it
+  const exclusionKeywords: Record<string, string[]> = {
+    'computer science': ['law', 'legal', 'jurisprudence', 'environmental', 'ecology', 'biology', 'chemistry', 'physics', 'medicine', 'nursing', 'education', 'teaching'],
+    'engineering': ['law', 'legal', 'jurisprudence', 'medicine', 'nursing', 'education', 'teaching', 'arts', 'fine arts'],
+    'business': ['law', 'legal', 'jurisprudence', 'medicine', 'engineering', 'computer science'],
+    'medicine': ['law', 'legal', 'jurisprudence', 'engineering', 'computer science', 'arts'],
+    'law': ['computer science', 'engineering', 'medicine', 'nursing'],
+  }
+
+  const exclusions = exclusionKeywords[userProgram] || []
+  
+  // Check if any exclusion keyword appears in the scholarship text
+  // Be strict: even one mention in eligibility/description is enough to exclude
+  const hasExclusion = exclusions.some(keyword => {
+    // Check if exclusion keyword appears anywhere in the text
+    return combinedText.includes(keyword)
+  })
+
+  // If scholarship explicitly mentions excluded fields and doesn't mention user's program, exclude it
+  if (hasExclusion && !hasProgramMatch) {
+    console.log(`[Program Check] ❌ Excluding "${scholarship.title}" - mentions excluded fields for "${user.program}" program`)
+    return false
+  }
+  
+  // Additional check: if scholarship has specific field requirements that don't match
+  // Look for patterns like "Field of Study: Law" or "for Law students"
+  const fieldOfStudyPatterns = [
+    /field of study[:\s]+([^,;]+)/i,
+    /for\s+([^,;]+)\s+students/i,
+    /open to\s+([^,;]+)\s+students/i,
+  ]
+  
+  for (const pattern of fieldOfStudyPatterns) {
+    const match = combinedText.match(pattern)
+    if (match) {
+      const mentionedField = match[1].toLowerCase()
+      // Check if mentioned field is in exclusions
+      if (exclusions.some(exclusion => mentionedField.includes(exclusion) || exclusion.includes(mentionedField))) {
+        if (!hasProgramMatch) {
+          console.log(`[Program Check] ❌ Excluding "${scholarship.title}" - explicitly for "${mentionedField}" which doesn't match "${user.program}"`)
+          return false
+        }
+      }
+    }
+  }
+
+  // First check if scholarship is universal (open to all) - if so, allow it regardless of program
+  const isUniversal = combinedText.includes('all students') || 
+                     combinedText.includes('any student') || 
+                     combinedText.includes('open to all') ||
+                     combinedText.includes('no requirements') ||
+                     combinedText.includes('any field') ||
+                     combinedText.includes('all fields') ||
+                     combinedText.includes('open to everyone')
+
+  if (isUniversal) {
+    console.log(`[Program Check] ✅ Universal scholarship: "${scholarship.title}" - open to all programs`)
+    return true // Universal scholarships match all programs
+  }
+
+  // If scholarship mentions specific programs/fields, check if user's program matches
+  if (hasProgramMatch) {
+    console.log(`[Program Check] ✅ Program match: "${scholarship.title}" matches "${user.program}"`)
+    return true
+  }
+
+  // If scholarship has exclusion keywords and is NOT universal, exclude it
+  if (hasExclusion) {
+    console.log(`[Program Check] ❌ Excluding "${scholarship.title}" - has exclusion keywords for "${user.program}" and is not universal`)
+    return false
+  }
+
+  // If no program keywords found and not universal, be conservative and allow it
+  // (some scholarships might not explicitly mention programs)
+  console.log(`[Program Check] ⚠️ No explicit program match for "${scholarship.title}" with "${user.program}" - allowing (may be general scholarship)`)
+  return true
+}
+
+/**
  * Check if scholarship should be a universal match for Canadian students
  */
 function isUniversalCanadianMatch(scholarship: any, user: any): boolean {
@@ -136,6 +250,8 @@ export async function POST(request: NextRequest) {
 
     const db = await getDb()
     const scholarshipsCollection = db.collection('scholarships')
+    const usersCollection = db.collection('users')
+    const matchesCollection = db.collection('matches')
 
     // Prepare documents
     const docs = scholarships.map((scholarship: any) => ({
@@ -203,121 +319,108 @@ export async function POST(request: NextRequest) {
       result = { insertedIds: {}, insertedCount: 0 }
     }
 
-    // Automatically match new scholarships with all users using embeddings
+    // Automatically trigger full re-matching for ALL users with ALL scholarships
     // This runs asynchronously so it doesn't block the response
-    const matchThreshold = 0 // Set to 0 for testing - will match all scholarships regardless of similarity
-    const usersCollection = db.collection('users')
-    const matchesCollection = db.collection('matches')
+    // This ensures matches are always up-to-date after scraping
     
-    // Get all users (need profile data for universal matching, not just embeddings)
-    const users = await usersCollection.find({}).toArray()
-
-    // Match asynchronously (fire and forget) - only for newly inserted scholarships
-    Promise.all(
-      Object.values(result.insertedIds).map(async (scholarshipId, index) => {
-        const scholarship = scholarshipsToInsert[index]
-        if (!scholarship) return
-
-        for (const user of users) {
-          // Check for universal matches first (works even without embeddings)
-          const isUniversalMatch = isUniversalCanadianMatch(scholarship, user)
+    // Get all users and all scholarships for full re-matching
+    Promise.all([
+      usersCollection.find({}).toArray(),
+      scholarshipsCollection.find({}).toArray(),
+    ]).then(([users, allScholarships]) => {
+      console.log(`[Auto-Matching] Starting full re-match for ${users.length} users with ${allScholarships.length} scholarships`)
+      
+      const matchThreshold = 0.5
+      
+      // Match each user with all scholarships
+      return Promise.all(
+        users.map(async (user) => {
+          if (!user.profile_embedding) {
+            console.log(`[Auto-Matching] Skipping user ${user.auth0_id} - no profile embedding`)
+            return
+          }
           
-          let similarity = 0
-          let shouldMatch = false
-          let matchReason = ''
-
-          if (isUniversalMatch) {
-            similarity = 0.95
-            shouldMatch = true
-            matchReason = 'Universal match - open to all Canadian students'
-            console.log(`[Auto-Matching] ✅ Universal match: "${scholarship.title}" for user ${user.auth0_id}`)
-          } else if (scholarship.description_embedding && user.profile_embedding) {
+          let matchesCreated = 0
+          let matchesUpdated = 0
+          
+          for (const scholarship of allScholarships) {
             try {
-              similarity = cosineSimilarity(
-                user.profile_embedding,
-                scholarship.description_embedding
-              )
-              shouldMatch = similarity >= matchThreshold
-              matchReason = `Matched by embedding similarity (${Math.round(similarity * 100)}%)`
+              // Priority check: Program of study match
+              if (!matchesProgramOfStudy(scholarship, user)) {
+                continue
+              }
+              
+              // Check for universal matches
+              const isUniversalMatch = isUniversalCanadianMatch(scholarship, user)
+              
+              let similarity = 0
+              let shouldMatch = false
+              let matchReason = ''
+              
+              if (isUniversalMatch) {
+                similarity = 0.95
+                shouldMatch = true
+                matchReason = 'Universal match - open to all Canadian students'
+              } else if (scholarship.description_embedding && user.profile_embedding) {
+                similarity = cosineSimilarity(
+                  user.profile_embedding,
+                  scholarship.description_embedding
+                )
+                shouldMatch = similarity >= matchThreshold
+                matchReason = `Matched by embedding similarity (${Math.round(similarity * 100)}%)`
+              } else {
+                continue
+              }
+              
+              if (shouldMatch) {
+                const existingMatch = await matchesCollection.findOne({
+                  user_id: user._id,
+                  scholarship_id: scholarship._id,
+                })
+                
+                if (existingMatch) {
+                  await matchesCollection.updateOne(
+                    { _id: existingMatch._id },
+                    {
+                      $set: {
+                        match_score: similarity,
+                        reason: matchReason,
+                        updated_at: new Date(),
+                      },
+                    }
+                  )
+                  matchesUpdated++
+                } else {
+                  await matchesCollection.updateOne(
+                    { user_id: user._id, scholarship_id: scholarship._id },
+                    {
+                      $set: {
+                        match_score: similarity,
+                        reason: matchReason,
+                        application_status: 'Not Started',
+                        updated_at: new Date(),
+                      },
+                      $setOnInsert: {
+                        created_at: new Date(),
+                      },
+                    },
+                    { upsert: true }
+                  )
+                  matchesCreated++
+                }
+              }
             } catch (error) {
-              console.error(`Error calculating similarity for user ${user.auth0_id}:`, error)
-              continue
-            }
-        } else {
-          // Skip if no embedding available and not a universal match
-          continue
-        }
-
-          if (shouldMatch) {
-            // Check if match already exists
-            const existingMatch = await matchesCollection.findOne({
-              user_id: user._id,
-              scholarship_id: scholarshipId,
-            })
-
-            if (!existingMatch) {
-              await matchesCollection.insertOne({
-                user_id: user._id,
-                scholarship_id: scholarshipId,
-                match_score: similarity,
-                reason: matchReason,
-                application_status: 'Not Started',
-                created_at: new Date(),
-                updated_at: new Date(),
-              })
-            }
-          }
-        }
-        
-        // For each scholarship, ensure at least one user gets matched (if any users exist)
-        if (users.length > 0) {
-          const userSimilarities: Array<{ user: any; similarity: number }> = []
-          
-          for (const user of users) {
-            if (!user.profile_embedding) continue
-            try {
-              const similarity = cosineSimilarity(
-                user.profile_embedding,
-                scholarship.description_embedding
-              )
-              userSimilarities.push({ user, similarity })
-            } catch (error) {
-              // Skip this user
+              console.error(`Error matching scholarship ${scholarship._id} for user ${user.auth0_id}:`, error)
             }
           }
           
-          // Check if any user has a match for this scholarship
-          const hasAnyMatch = await matchesCollection.findOne({
-            scholarship_id: scholarshipId,
-          })
-          
-          // If no matches exist and we have similarities, force the best match
-          if (!hasAnyMatch && userSimilarities.length > 0) {
-            userSimilarities.sort((a, b) => b.similarity - a.similarity)
-            const bestMatch = userSimilarities[0]
-            
-            const existingMatch = await matchesCollection.findOne({
-              user_id: bestMatch.user._id,
-              scholarship_id: scholarshipId,
-            })
-            
-            if (!existingMatch) {
-              await matchesCollection.insertOne({
-                user_id: bestMatch.user._id,
-                scholarship_id: scholarshipId,
-                match_score: bestMatch.similarity,
-                reason: `Best available match (${Math.round(bestMatch.similarity * 100)}% similarity) - forced match`,
-                application_status: 'Not Started',
-                created_at: new Date(),
-                updated_at: new Date(),
-              })
-              console.log(`Forced match created for user ${bestMatch.user.auth0_id} with scholarship ${scholarship.title}`)
-            }
-          }
-        }
-      })
-    ).catch(error => {
-      console.error('Error in matching process:', error)
+          console.log(`[Auto-Matching] User ${user.auth0_id}: ${matchesCreated} created, ${matchesUpdated} updated`)
+        })
+      )
+    }).then(() => {
+      console.log(`[Auto-Matching] Full re-matching completed`)
+    }).catch(error => {
+      console.error('Error in full matching process:', error)
       // Don't fail the request if matching fails
     })
 
@@ -327,7 +430,7 @@ export async function POST(request: NextRequest) {
       duplicates_skipped: scholarshipsWithEmbeddings.length - scholarshipsToInsert.length,
       scholarship_ids: Object.values(result.insertedIds).map(id => id.toString()),
       matching_triggered: true,
-      users_matched: users.length,
+      message: 'Scholarships imported and full re-matching triggered for all users',
     })
   } catch (error) {
     console.error('Gumloop bulk import error:', error)

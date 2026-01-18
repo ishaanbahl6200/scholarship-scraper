@@ -125,17 +125,31 @@ export default function ScholarshipsPanel() {
   }, [items, query])
 
   const saveScholarship = async (id: string) => {
+    const isSaved = savedIds.has(id)
     try {
-      const response = await fetch('/api/saved', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scholarshipId: id }),
-      })
-      if (response.ok) {
-        setSavedIds(new Set([...savedIds, id]))
+      if (isSaved) {
+        // Unsave
+        const response = await fetch(`/api/saved?scholarshipId=${id}`, {
+          method: 'DELETE',
+        })
+        if (response.ok) {
+          const newSavedIds = new Set(savedIds)
+          newSavedIds.delete(id)
+          setSavedIds(newSavedIds)
+        }
+      } else {
+        // Save
+        const response = await fetch('/api/saved', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scholarshipId: id }),
+        })
+        if (response.ok) {
+          setSavedIds(new Set([...savedIds, id]))
+        }
       }
     } catch (error) {
-      console.error('Error saving scholarship:', error)
+      console.error('Error toggling saved scholarship:', error)
     }
   }
 
@@ -274,8 +288,9 @@ export default function ScholarshipsPanel() {
                 <div className="flex-1">
                   <h3 className="text-lg font-semibold text-foreground">{card.name}</h3>
                   <p className="text-sm text-muted-foreground">
-                    {card.amount ? `$${card.amount.toLocaleString()}` : 'Amount TBD'} ·{' '}
-                    {card.deadline ? `Deadline ${new Date(card.deadline).toLocaleDateString()}` : 'Deadline TBD'}
+                    {card.amount && `$${card.amount.toLocaleString()}`}
+                    {card.amount && card.deadline && ' · '}
+                    {card.deadline ? `Deadline ${new Date(card.deadline).toLocaleDateString()}` : card.amount ? '' : 'Deadline TBD'}
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
@@ -293,26 +308,23 @@ export default function ScholarshipsPanel() {
                   )}
                   <button
                     onClick={() => saveScholarship(card.id)}
-                    className="btn-secondary flex items-center gap-2 text-sm"
-                    disabled={savedIds.has(card.id)}
-                    title={savedIds.has(card.id) ? 'Already saved' : 'Save scholarship'}
+                    className={`btn-secondary flex items-center gap-2 text-sm ${savedIds.has(card.id) ? 'bg-primary/10 text-primary' : ''}`}
+                    title={savedIds.has(card.id) ? 'Click to unsave' : 'Click to save'}
                   >
                     <Bookmark className={`h-4 w-4 ${savedIds.has(card.id) ? 'fill-current' : ''}`} />
                     {savedIds.has(card.id) ? 'Saved' : 'Save'}
                   </button>
                 </div>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {card.tags.length === 0 ? (
-                  <span className="text-xs text-muted-foreground">No tags provided</span>
-                ) : (
-                  card.tags.map((tag) => (
+              {card.tags.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {card.tags.map((tag) => (
                     <span key={tag} className="badge bg-muted text-muted-foreground">
                       {tag}
                     </span>
-                  ))
-                )}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
         </div>

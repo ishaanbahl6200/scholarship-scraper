@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Bookmark, RefreshCw } from 'lucide-react'
+import { Bookmark } from 'lucide-react'
 import { TypingAnimation } from '@/components/ui/typing-animation'
 import { ScholarshipCard } from '@/lib/types'
 
@@ -92,25 +92,34 @@ export default function MatchesPanel() {
   }, [items.length, loading])
 
   const saveScholarship = async (id: string) => {
+    const isSaved = savedIds.has(id)
     try {
-      const response = await fetch('/api/saved', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scholarshipId: id }),
-      })
-      if (response.ok) {
-        setSavedIds(new Set([...savedIds, id]))
+      if (isSaved) {
+        // Unsave
+        const response = await fetch(`/api/saved?scholarshipId=${id}`, {
+          method: 'DELETE',
+        })
+        if (response.ok) {
+          const newSavedIds = new Set(savedIds)
+          newSavedIds.delete(id)
+          setSavedIds(newSavedIds)
+        }
+      } else {
+        // Save
+        const response = await fetch('/api/saved', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scholarshipId: id }),
+        })
+        if (response.ok) {
+          setSavedIds(new Set([...savedIds, id]))
+        }
       }
     } catch (error) {
-      console.error('Error saving scholarship:', error)
+      console.error('Error toggling saved scholarship:', error)
     }
   }
 
-  const refreshMatches = async () => {
-    setLoading(true)
-    // Just reload matches - matching happens automatically when scholarships are scraped
-    await loadMatches()
-  }
 
   const cards = useMemo(() => items, [items])
 
@@ -125,16 +134,6 @@ export default function MatchesPanel() {
             className="text-sm md:text-base font-normal text-center text-muted-foreground leading-normal tracking-normal drop-shadow-none"
           />
         </div>
-        {onboardingComplete && (
-          <button
-            onClick={refreshMatches}
-            disabled={loading}
-            className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
-            title="Refresh matches"
-          >
-            <RefreshCw className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`} />
-          </button>
-        )}
       </div>
 
       {loading ? (
@@ -173,15 +172,16 @@ export default function MatchesPanel() {
           )}
         </div>
       ) : (
-        <div className="grid gap-6 md:grid-cols-2">
+        <div className="grid gap-6 md:grid-cols-2 max-h-[70vh] overflow-y-auto pr-2">
           {cards.map((card) => (
             <div key={card.id} className="card card-result space-y-4">
               <div className="flex items-start justify-between">
                 <div>
                   <h3 className="text-lg font-semibold text-foreground">{card.name}</h3>
                   <p className="text-sm text-muted-foreground">
-                    {card.amount ? `$${card.amount.toLocaleString()}` : 'Amount TBD'} ·{' '}
-                    {card.deadline ? `Deadline ${new Date(card.deadline).toLocaleDateString()}` : 'Deadline TBD'}
+                    {card.amount && `$${card.amount.toLocaleString()}`}
+                    {card.amount && card.deadline && ' · '}
+                    {card.deadline ? `Deadline ${new Date(card.deadline).toLocaleDateString()}` : card.amount ? '' : 'Deadline TBD'}
                   </p>
                 </div>
                 {card.matchScore !== null && (
@@ -189,17 +189,15 @@ export default function MatchesPanel() {
                 )}
               </div>
 
-              <div className="flex flex-wrap gap-2">
-                {card.tags.length === 0 ? (
-                  <span className="text-xs text-muted-foreground">No tags provided</span>
-                ) : (
-                  card.tags.map((tag) => (
+              {card.tags.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {card.tags.map((tag) => (
                     <span key={tag} className="badge bg-muted text-muted-foreground">
                       {tag}
                     </span>
-                  ))
-                )}
-              </div>
+                  ))}
+                </div>
+              )}
 
               <div className="flex items-center justify-between">
                 {card.applicationUrl ? (
@@ -214,14 +212,13 @@ export default function MatchesPanel() {
                 ) : (
                   <span className="text-xs text-muted-foreground">No link provided</span>
                 )}
-                <button
-                  onClick={() => saveScholarship(card.id)}
-                  className="btn-secondary flex items-center gap-2 text-sm"
-                  disabled={savedIds.has(card.id)}
-                >
-                  <Bookmark className="h-4 w-4" />
-                  {savedIds.has(card.id) ? 'Saved' : 'Save'}
-                </button>
+                    <button
+                      onClick={() => saveScholarship(card.id)}
+                      className={`btn-secondary flex items-center gap-2 text-sm ${savedIds.has(card.id) ? 'bg-primary/10 text-primary' : ''}`}
+                    >
+                      <Bookmark className={`h-4 w-4 ${savedIds.has(card.id) ? 'fill-current' : ''}`} />
+                      {savedIds.has(card.id) ? 'Saved' : 'Save'}
+                    </button>
               </div>
             </div>
           ))}

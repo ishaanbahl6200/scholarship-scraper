@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@auth0/nextjs-auth0'
 import { getDb } from '@/lib/db'
 import { ObjectId } from 'mongodb'
+import { generateEmbedding } from '@/lib/gemini'
 
 /**
  * Calculate cosine similarity between two embeddings
@@ -17,6 +18,120 @@ function cosineSimilarity(a: number[], b: number[]): number {
     normB += b[i] * b[i]
   }
   return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB))
+}
+
+/**
+ * Check if scholarship matches user's program of study
+ * This is a priority check - scholarships that don't match the program should be excluded
+ */
+function matchesProgramOfStudy(scholarship: any, user: any): boolean {
+  if (!user.program || !user.program.trim()) {
+    // If user hasn't specified a program, allow all scholarships
+    return true
+  }
+
+  const userProgram = user.program.toLowerCase()
+  const title = (scholarship.title || '').toLowerCase()
+  const description = (scholarship.description || '').toLowerCase()
+  const eligibility = Array.isArray(scholarship.eligibility) 
+    ? scholarship.eligibility.join(' ').toLowerCase()
+    : (scholarship.eligibility || '').toLowerCase()
+  
+  const combinedText = `${title} ${description} ${eligibility}`
+
+  // Normalize program names for matching
+  const programVariations: Record<string, string[]> = {
+    'computer science': ['computer science', 'cs', 'computing', 'software', 'programming', 'computer engineering', 'software engineering'],
+    'engineering': ['engineering', 'engineer'],
+    'business': ['business', 'commerce', 'finance', 'accounting', 'marketing', 'management'],
+    'medicine': ['medicine', 'medical', 'health', 'healthcare'],
+    'law': ['law', 'legal', 'jurisprudence'],
+    'education': ['education', 'teaching', 'pedagogy'],
+    'arts': ['arts', 'art', 'fine arts', 'humanities'],
+    'science': ['science', 'biology', 'chemistry', 'physics', 'mathematics'],
+  }
+
+  // Check if scholarship explicitly mentions the program or related terms
+  const programKeywords = programVariations[userProgram] || [userProgram]
+  const hasProgramMatch = programKeywords.some(keyword => combinedText.includes(keyword))
+
+  // Also check for exclusion keywords - if scholarship mentions a different field, exclude it
+  // This is stricter: if scholarship explicitly mentions fields that don't match, exclude it
+  const exclusionKeywords: Record<string, string[]> = {
+    'computer science': ['law', 'legal', 'jurisprudence', 'environmental', 'ecology', 'biology', 'chemistry', 'physics', 'medicine', 'nursing', 'education', 'teaching'],
+    'engineering': ['law', 'legal', 'jurisprudence', 'medicine', 'nursing', 'education', 'teaching', 'arts', 'fine arts'],
+    'business': ['law', 'legal', 'jurisprudence', 'medicine', 'engineering', 'computer science'],
+    'medicine': ['law', 'legal', 'jurisprudence', 'engineering', 'computer science', 'arts'],
+    'law': ['computer science', 'engineering', 'medicine', 'nursing'],
+  }
+
+  const exclusions = exclusionKeywords[userProgram] || []
+  
+  // Check if any exclusion keyword appears in the scholarship text
+  // Be strict: even one mention in eligibility/description is enough to exclude
+  const hasExclusion = exclusions.some(keyword => {
+    // Check if exclusion keyword appears anywhere in the text
+    return combinedText.includes(keyword)
+  })
+
+  // If scholarship explicitly mentions excluded fields and doesn't mention user's program, exclude it
+  if (hasExclusion && !hasProgramMatch) {
+    console.log(`[Program Check] ❌ Excluding "${scholarship.title}" - mentions excluded fields for "${user.program}" program`)
+    return false
+  }
+  
+  // Additional check: if scholarship has specific field requirements that don't match
+  // Look for patterns like "Field of Study: Law" or "for Law students"
+  const fieldOfStudyPatterns = [
+    /field of study[:\s]+([^,;]+)/i,
+    /for\s+([^,;]+)\s+students/i,
+    /open to\s+([^,;]+)\s+students/i,
+  ]
+  
+  for (const pattern of fieldOfStudyPatterns) {
+    const match = combinedText.match(pattern)
+    if (match) {
+      const mentionedField = match[1].toLowerCase()
+      // Check if mentioned field is in exclusions
+      if (exclusions.some(exclusion => mentionedField.includes(exclusion) || exclusion.includes(mentionedField))) {
+        if (!hasProgramMatch) {
+          console.log(`[Program Check] ❌ Excluding "${scholarship.title}" - explicitly for "${mentionedField}" which doesn't match "${user.program}"`)
+          return false
+        }
+      }
+    }
+  }
+
+  // First check if scholarship is universal (open to all) - if so, allow it regardless of program
+  const isUniversal = combinedText.includes('all students') || 
+                     combinedText.includes('any student') || 
+                     combinedText.includes('open to all') ||
+                     combinedText.includes('no requirements') ||
+                     combinedText.includes('any field') ||
+                     combinedText.includes('all fields') ||
+                     combinedText.includes('open to everyone')
+
+  if (isUniversal) {
+    console.log(`[Program Check] ✅ Universal scholarship: "${scholarship.title}" - open to all programs`)
+    return true // Universal scholarships match all programs
+  }
+
+  // If scholarship mentions specific programs/fields, check if user's program matches
+  if (hasProgramMatch) {
+    console.log(`[Program Check] ✅ Program match: "${scholarship.title}" matches "${user.program}"`)
+    return true
+  }
+
+  // If scholarship has exclusion keywords and is NOT universal, exclude it
+  if (hasExclusion) {
+    console.log(`[Program Check] ❌ Excluding "${scholarship.title}" - has exclusion keywords for "${user.program}" and is not universal`)
+    return false
+  }
+
+  // If no program keywords found and not universal, be conservative and allow it
+  // (some scholarships might not explicitly mention programs)
+  console.log(`[Program Check] ⚠️ No explicit program match for "${scholarship.title}" with "${user.program}" - allowing (may be general scholarship)`)
+  return true
 }
 
 /**
@@ -135,11 +250,80 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Generate embedding if missing
     if (!user.profile_embedding) {
-      return NextResponse.json(
-        { error: 'User profile embedding not found. Please update your profile.' },
-        { status: 400 }
-      )
+      console.log(`[Matching] Profile embedding missing for user ${auth0UserId}, generating now...`)
+      
+      const profileText = [
+        user.name || '',
+        user.school || '',
+        user.program || '',
+        user.gpa ? `GPA: ${user.gpa}` : '',
+        user.province ? `Province: ${user.province}` : '',
+        user.citizenship ? `Citizenship: ${user.citizenship}` : '',
+        user.ethnicity ? `Ethnicity: ${user.ethnicity}` : '',
+        Array.isArray(user.interests) ? user.interests.join(', ') : '',
+        user.demographics ? JSON.stringify(user.demographics) : '',
+      ]
+        .filter(Boolean)
+        .join('\n')
+      
+      if (!profileText.trim()) {
+        return NextResponse.json(
+          { error: 'User profile is incomplete. Please complete your profile first.' },
+          { status: 400 }
+        )
+      }
+      
+      try {
+        console.log(`[Matching] Generating embedding for profile text (length: ${profileText.length}):`, profileText.substring(0, 200))
+        
+        // Check if GEMINI_API_KEY is configured
+        if (!process.env.GEMINI_API_KEY) {
+          console.error(`[Matching] GEMINI_API_KEY is not configured in environment variables`)
+          return NextResponse.json(
+            { 
+              error: 'Embedding service not configured. GEMINI_API_KEY is missing. Please contact support.',
+              details: 'The embedding generation service requires a Gemini API key to be configured.'
+            },
+            { status: 500 }
+          )
+        }
+        
+        const embedding = await generateEmbedding(profileText)
+        if (embedding && Array.isArray(embedding) && embedding.length > 0) {
+          // Update user with generated embedding
+          await usersCollection.updateOne(
+            { auth0_id: auth0UserId },
+            { $set: { profile_embedding: embedding } }
+          )
+          user.profile_embedding = embedding
+          console.log(`[Matching] Successfully generated and saved profile embedding (${embedding.length} dimensions) for user ${auth0UserId}`)
+        } else {
+          console.error(`[Matching] Embedding generation returned null or empty array. API key configured: ${!!process.env.GEMINI_API_KEY}`)
+          return NextResponse.json(
+            { 
+              error: 'Failed to generate profile embedding. The embedding service returned no data.',
+              details: embedding === null ? 'Embedding service returned null. Check if GEMINI_API_KEY is valid.' : 'Embedding array is empty.'
+            },
+            { status: 500 }
+          )
+        }
+      } catch (error) {
+        console.error(`[Matching] Failed to generate embedding:`, error)
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+        const errorDetails = error instanceof Error ? error.stack : String(error)
+        console.error(`[Matching] Error details:`, errorDetails)
+        
+        return NextResponse.json(
+          { 
+            error: 'Failed to generate profile embedding.',
+            details: errorMessage,
+            suggestion: 'Please check if GEMINI_API_KEY is correctly configured in your environment variables.'
+          },
+          { status: 500 }
+        )
+      }
     }
 
     // Get all scholarships (including those without embeddings for universal matching)
@@ -159,7 +343,7 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    const matchThreshold = 0 // Set to 0 for testing - will match all scholarships regardless of similarity
+    const matchThreshold = 0.5 // Match scholarships with at least 50% similarity
     let matchesCreated = 0
     let matchesUpdated = 0
     
@@ -169,7 +353,13 @@ export async function POST(request: NextRequest) {
     // Match user with all scholarships
     for (const scholarship of scholarships) {
       try {
-        // Check for universal matches first (scholarships open to all Canadian students)
+        // Priority check: Program of study match (most important)
+        if (!matchesProgramOfStudy(scholarship, user)) {
+          console.log(`[Matching] Skipping "${scholarship.title}" - doesn't match program of study`)
+          continue // Skip this scholarship entirely
+        }
+
+        // Check for universal matches (scholarships open to all Canadian students)
         const isUniversalMatch = isUniversalCanadianMatch(scholarship, user)
         
         let similarity = 0
@@ -195,11 +385,12 @@ export async function POST(request: NextRequest) {
           } else {
             console.log(`[Matching] ❌ Embedding match below threshold: "${scholarship.title}" - ${Math.round(similarity * 100)}% similarity (threshold: ${matchThreshold})`)
           }
+        } else if (user.profile_embedding && !scholarship.description_embedding) {
+          // Scholarship has no embedding - skip it (can't calculate similarity)
+          console.log(`[Matching] ⚠️ Skipping "${scholarship.title}" - no embedding available`)
+          continue
         } else {
-          // Skip if no embedding available and not a universal match
-          if (!scholarship.description_embedding) {
-            console.log(`[Matching] ⚠️ Skipping "${scholarship.title}" - no embedding available and not a universal match`)
-          }
+          // Skip if user has no profile embedding
           if (!user.profile_embedding) {
             console.log(`[Matching] ⚠️ Skipping "${scholarship.title}" - user has no profile embedding`)
           }
@@ -261,48 +452,14 @@ export async function POST(request: NextRequest) {
       }
     }
     
-    // If no matches were created, force at least one match (the best one)
-    // But only if we actually didn't create any matches (not just because threshold is 0)
-    if (matchesCreated === 0 && matchesUpdated === 0 && allSimilarities.length > 0) {
-      // Sort by similarity descending and take the best match
+    // Log summary of matching results
+    if (allSimilarities.length === 0) {
+      console.log(`[Matching] No similarities calculated - this shouldn't happen if scholarships have embeddings`)
+    } else if (matchesCreated === 0 && matchesUpdated === 0) {
+      // Log the best available match for debugging, but don't force it
       allSimilarities.sort((a, b) => b.similarity - a.similarity)
       const bestMatch = allSimilarities[0]
-      
-      console.log(`[Matching] No matches above threshold. Best similarity: ${Math.round(bestMatch.similarity * 100)}% for scholarship: ${bestMatch.scholarship.title}`)
-      
-      // Check if this match already exists (double-check to prevent duplicates)
-      const existingMatch = await matchesCollection.findOne({
-        user_id: user._id,
-        scholarship_id: bestMatch.scholarship._id,
-      })
-      
-      if (!existingMatch) {
-        // Use upsert to prevent duplicates
-        await matchesCollection.updateOne(
-          {
-            user_id: user._id,
-            scholarship_id: bestMatch.scholarship._id,
-          },
-          {
-            $set: {
-              match_score: bestMatch.similarity,
-              reason: `Best available match (${Math.round(bestMatch.similarity * 100)}% similarity) - forced match`,
-              application_status: 'Not Started',
-              updated_at: new Date(),
-            },
-            $setOnInsert: {
-              created_at: new Date(),
-            },
-          },
-          { upsert: true }
-        )
-        matchesCreated++
-        console.log(`[Matching] Forced match created: ${bestMatch.scholarship.title} with ${Math.round(bestMatch.similarity * 100)}% similarity`)
-      } else {
-        console.log(`[Matching] Best match already exists for scholarship: ${bestMatch.scholarship.title}`)
-      }
-    } else if (allSimilarities.length === 0) {
-      console.log(`[Matching] No similarities calculated - this shouldn't happen if scholarships have embeddings`)
+      console.log(`[Matching] No matches above ${matchThreshold * 100}% threshold. Best available: ${Math.round(bestMatch.similarity * 100)}% for scholarship: ${bestMatch.scholarship.title}`)
     }
 
     const response = {
