@@ -32,6 +32,9 @@ export default function ScholarshipsPanel() {
   const [loading, setLoading] = useState(true)
   const [scraping, setScraping] = useState(false)
   const [scrapeProgress, setScrapeProgress] = useState(0)
+  const [matching, setMatching] = useState(false)
+  const [matchProgress, setMatchProgress] = useState(0)
+  const [lastScrapeTime, setLastScrapeTime] = useState<string | null>(null)
 
   const loadScholarships = async () => {
     setLoading(true)
@@ -49,8 +52,137 @@ export default function ScholarshipsPanel() {
     }
   }
 
+  const handleMatching = async () => {
+    setMatching(true)
+    setMatchProgress(0)
+    
+    // Simulate progress (matching typically takes 5-15 seconds)
+    const matchProgressInterval = setInterval(() => {
+      setMatchProgress((prev) => {
+        if (prev >= 90) return prev // Stop at 90% until completion
+        return prev + Math.random() * 10 // Increment by 0-10%
+      })
+    }, 500)
+
+    try {
+      const response = await fetch('/api/gumloop/trigger-matching', {
+        method: 'POST',
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        
+        // Wait for matching to complete (typically 5-15 seconds)
+        setTimeout(() => {
+          clearInterval(matchProgressInterval)
+          setMatchProgress(100)
+          
+          // Wait a bit more for processing
+          setTimeout(() => {
+            setMatching(false)
+            setMatchProgress(0)
+          }, 1000)
+        }, 10000) // 10 seconds estimate
+      } else {
+        clearInterval(matchProgressInterval)
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+        console.error(`Failed to update matches: ${errorData.error || 'Please try again.'}`)
+        setMatching(false)
+        setMatchProgress(0)
+      }
+    } catch (error) {
+      clearInterval(matchProgressInterval)
+      console.error('Error triggering matching:', error)
+      setMatching(false)
+      setMatchProgress(0)
+    }
+  }
+
   useEffect(() => {
     loadScholarships()
+    
+    // Check for ongoing scrape from localStorage
+    const scrapeStartTime = localStorage.getItem('scrapeStartTime')
+    const scrapeWorkflowId = localStorage.getItem('scrapeWorkflowId')
+    const lastScrape = localStorage.getItem('lastScrapeTime')
+    
+    if (lastScrape) {
+      setLastScrapeTime(lastScrape)
+    }
+    
+    if (scrapeStartTime && scrapeWorkflowId) {
+      const startTime = parseInt(scrapeStartTime)
+      const elapsed = (Date.now() - startTime) / 1000 // seconds
+      
+      // If scrape started less than 60 seconds ago, continue showing progress
+      if (elapsed < 60) {
+        setScraping(true)
+        setScrapeProgress(Math.min(90, (elapsed / 60) * 90))
+        
+        // Continue progress simulation
+        const remainingTime = 60 - elapsed
+        const progressInterval = setInterval(() => {
+          setScrapeProgress((prev) => {
+            if (prev >= 90) return prev
+            return prev + Math.random() * 5
+          })
+        }, 1000)
+        
+        // Complete after remaining time
+        const completeTimeout = setTimeout(async () => {
+          clearInterval(progressInterval)
+          setScrapeProgress(100)
+          await new Promise(resolve => setTimeout(resolve, 2000))
+          await loadScholarships()
+          setScraping(false)
+          setScrapeProgress(0)
+          localStorage.removeItem('scrapeStartTime')
+          localStorage.removeItem('scrapeWorkflowId')
+          localStorage.setItem('lastScrapeTime', new Date().toISOString())
+          setLastScrapeTime(new Date().toISOString())
+          // Trigger matching after scrape completes
+          setMatching(true)
+          setMatchProgress(0)
+          const matchInterval = setInterval(() => {
+            setMatchProgress((prev) => {
+              if (prev >= 90) return prev
+              return prev + Math.random() * 10
+            })
+          }, 500)
+          try {
+            const matchResponse = await fetch('/api/gumloop/trigger-matching', { method: 'POST' })
+            if (matchResponse.ok) {
+              setTimeout(() => {
+                clearInterval(matchInterval)
+                setMatchProgress(100)
+                setTimeout(() => {
+                  setMatching(false)
+                  setMatchProgress(0)
+                }, 1000)
+              }, 10000)
+            } else {
+              clearInterval(matchInterval)
+              setMatching(false)
+              setMatchProgress(0)
+            }
+          } catch {
+            clearInterval(matchInterval)
+            setMatching(false)
+            setMatchProgress(0)
+          }
+        }, remainingTime * 1000)
+        
+        // Cleanup on unmount
+        return () => {
+          clearInterval(progressInterval)
+          clearTimeout(completeTimeout)
+        }
+      } else {
+        // Scrape should have completed, clean up
+        localStorage.removeItem('scrapeStartTime')
+        localStorage.removeItem('scrapeWorkflowId')
+      }
+    }
   }, [])
 
   const filtered = useMemo(() => {
@@ -62,8 +194,12 @@ export default function ScholarshipsPanel() {
     setScraping(true)
     setScrapeProgress(0)
     
+    // Store scrape start time in localStorage so it persists across navigation
+    const startTime = Date.now()
+    localStorage.setItem('scrapeStartTime', startTime.toString())
+    
     // Simulate progress (scraper typically takes 30-60 seconds)
-    const progressInterval = setInterval(() => {
+    const scrapeProgressInterval = setInterval(() => {
       setScrapeProgress((prev) => {
         if (prev >= 90) return prev // Stop at 90% until completion
         return prev + Math.random() * 5 // Increment by 0-5%
@@ -77,11 +213,15 @@ export default function ScholarshipsPanel() {
       
       if (response.ok) {
         const data = await response.json()
+        // Store workflow ID in case we need to check status
+        if (data.workflow_run_id) {
+          localStorage.setItem('scrapeWorkflowId', data.workflow_run_id)
+        }
         
         // Wait for scraper to complete (poll or estimate time)
         // For now, we'll wait ~45 seconds then refresh
         setTimeout(async () => {
-          clearInterval(progressInterval)
+          clearInterval(scrapeProgressInterval)
           setScrapeProgress(100)
           
           // Wait a bit more for backend processing
@@ -91,16 +231,29 @@ export default function ScholarshipsPanel() {
           await loadScholarships()
           setScraping(false)
           setScrapeProgress(0)
+          
+          // Clean up localStorage
+          localStorage.removeItem('scrapeStartTime')
+          localStorage.removeItem('scrapeWorkflowId')
+          localStorage.setItem('lastScrapeTime', new Date().toISOString())
+          setLastScrapeTime(new Date().toISOString())
+          
+          // Now trigger matching
+          await handleMatching()
         }, 45000) // 45 seconds estimate
       } else {
-        clearInterval(progressInterval)
+        clearInterval(scrapeProgressInterval)
+        localStorage.removeItem('scrapeStartTime')
+        localStorage.removeItem('scrapeWorkflowId')
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
         alert(`Failed to start scraper: ${errorData.error || 'Please try again.'}`)
         setScraping(false)
         setScrapeProgress(0)
       }
     } catch (error) {
-      clearInterval(progressInterval)
+      clearInterval(scrapeProgressInterval)
+      localStorage.removeItem('scrapeStartTime')
+      localStorage.removeItem('scrapeWorkflowId')
       console.error('Error triggering scraper:', error)
       alert('Failed to start scraper. Please try again.')
       setScraping(false)
@@ -114,19 +267,26 @@ export default function ScholarshipsPanel() {
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1">
             <h2 className="text-2xl font-semibold text-foreground">Scholarships</h2>
-            <TypingAnimation
-              text="Browse scholarships collected from our top sources..."
-              duration={30}
-              className="text-sm md:text-base font-normal text-left text-muted-foreground leading-normal tracking-normal drop-shadow-none"
-            />
+            <div>
+              <TypingAnimation
+                text="Browse scholarships collected from our top sources..."
+                duration={30}
+                className="text-sm md:text-base font-normal text-left text-muted-foreground leading-normal tracking-normal drop-shadow-none"
+              />
+              {lastScrapeTime && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Last scraped: {new Date(lastScrapeTime).toLocaleString()}
+                </p>
+              )}
+            </div>
           </div>
           <button
             onClick={handleRefresh}
-            disabled={scraping}
+            disabled={scraping || matching}
             className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
-            title="Refresh scholarships"
+            title="Refresh scholarships and update matches"
           >
-            <RefreshCw className={`h-5 w-5 ${scraping ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-5 w-5 ${scraping || matching ? 'animate-spin' : ''}`} />
           </button>
         </div>
         {scraping && (
@@ -139,6 +299,19 @@ export default function ScholarshipsPanel() {
             </div>
             <p className="text-xs text-muted-foreground mt-1 text-center">
               Scraping scholarships... {Math.round(scrapeProgress)}%
+            </p>
+          </div>
+        )}
+        {matching && (
+          <div className="w-full">
+            <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+              <div
+                className="h-full bg-primary transition-all duration-300 ease-out"
+                style={{ width: `${matchProgress}%` }}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground mt-1 text-center">
+              Updating matches... {Math.round(matchProgress)}%
             </p>
           </div>
         )}

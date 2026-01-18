@@ -4,6 +4,50 @@ import { getDb } from '@/lib/db'
 import { onboardingSchema } from '@/lib/validators'
 import { generateEmbedding } from '@/lib/gemini'
 
+export async function GET() {
+  const session = await getSession()
+  
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  try {
+    const db = await getDb()
+    const user = await db.collection('users').findOne({ auth0_id: session.user.sub })
+
+    if (!user) {
+      // Create a basic user record if it doesn't exist (associate with Auth0)
+      const now = new Date()
+      const result = await db.collection('users').insertOne({
+        auth0_id: session.user.sub,
+        email: session.user.email,
+        created_at: now,
+        updated_at: now,
+      })
+      console.log('Created new user record for Auth0 user:', session.user.sub)
+      return NextResponse.json({ exists: false, created: true })
+    }
+
+    return NextResponse.json({
+      exists: true,
+      profile: {
+        name: user.name || '',
+        school: user.school || '',
+        program: user.program || '',
+        gpa: user.gpa ?? null,
+        province: user.province || '',
+        citizenship: user.citizenship || '',
+        ethnicity: user.ethnicity || '',
+        interests: user.interests || [],
+        demographics: user.demographics || {},
+      },
+    })
+  } catch (error) {
+    console.error('Error fetching profile:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
 function parseDemographics(input?: string): Record<string, unknown> | undefined {
   if (!input?.trim()) {
     return undefined

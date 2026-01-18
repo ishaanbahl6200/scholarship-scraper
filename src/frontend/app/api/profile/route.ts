@@ -2,6 +2,7 @@ import { getSession } from '@auth0/nextjs-auth0'
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 import { profileUpdateSchema } from '@/lib/validators'
+import { generateEmbedding } from '@/lib/gemini'
 
 export async function GET() {
   const session = await getSession()
@@ -56,22 +57,82 @@ export async function PATCH(request: NextRequest) {
   }
 
   const payload = await request.json()
+  console.log('Profile update payload:', payload)
   const parsed = profileUpdateSchema.safeParse(payload)
 
   if (!parsed.success) {
+    console.error('Profile update validation failed:', parsed.error.flatten())
     return NextResponse.json(
       { error: 'Invalid payload', details: parsed.error.flatten() },
       { status: 400 }
     )
   }
+  
+  console.log('Profile update validated:', parsed.data)
 
   try {
     const db = await getDb()
     const now = new Date()
-    await db.collection('users').updateOne(
+    
+    // Get current user to merge with updated data
+    const currentUser = await db.collection('users').findOne({ auth0_id: session.user.sub })
+    
+    if (!currentUser) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    }
+    
+    // Merge current data with updates
+    const updatedData = {
+      ...currentUser,
+      ...parsed.data,
+      updated_at: now,
+    }
+    
+    // Regenerate embedding if profile data changed
+    const profileText = [
+      updatedData.name || '',
+      updatedData.school || '',
+      updatedData.program || '',
+      updatedData.gpa ? `GPA: ${updatedData.gpa}` : '',
+      updatedData.province ? `Province: ${updatedData.province}` : '',
+      updatedData.citizenship ? `Citizenship: ${updatedData.citizenship}` : '',
+      updatedData.ethnicity ? `Ethnicity: ${updatedData.ethnicity}` : '',
+      Array.isArray(updatedData.interests) ? updatedData.interests.join(', ') : '',
+      updatedData.demographics ? JSON.stringify(updatedData.demographics) : '',
+    ]
+      .filter(Boolean)
+      .join('\n')
+    
+    let embedding: number[] | null = null
+    if (profileText.trim()) {
+      try {
+        embedding = await generateEmbedding(profileText)
+      } catch (error) {
+        console.error('Failed to generate embedding:', error)
+        // Continue without embedding if generation fails
+      }
+    }
+    
+    // Update user with new data and embedding
+    const updateDoc: any = {
+      ...parsed.data,
+      updated_at: now,
+    }
+    
+    if (embedding) {
+      updateDoc.profile_embedding = embedding
+    }
+    
+    const updateResult = await db.collection('users').updateOne(
       { auth0_id: session.user.sub },
-      { $set: { ...parsed.data, updated_at: now } }
+      { $set: updateDoc }
     )
+    
+    console.log('Profile update result:', {
+      matchedCount: updateResult.matchedCount,
+      modifiedCount: updateResult.modifiedCount,
+      updateDoc: Object.keys(updateDoc),
+    })
 
     // Trigger scraper workflow after profile update (fire and forget)
     try {
