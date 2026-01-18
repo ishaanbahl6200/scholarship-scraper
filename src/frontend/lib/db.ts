@@ -1,4 +1,4 @@
-import { MongoClient, Db } from 'mongodb'
+import { Db, MongoClient } from 'mongodb'
 
 const mongoUri = process.env.MONGODB_URI
 
@@ -11,6 +11,7 @@ const dbName = process.env.MONGODB_DB_NAME || 'scholarship_finder_ca'
 let clientPromise: Promise<MongoClient>
 
 declare global {
+  // eslint-disable-next-line no-var
   var _mongoClientPromise: Promise<MongoClient> | undefined
 }
 
