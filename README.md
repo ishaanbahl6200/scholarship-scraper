@@ -163,31 +163,32 @@ After your first successful deployment, you'll get a **Project URL** (not the de
 
 **Finding your Project URL:**
 - Go to Vercel Dashboard → Your Project
-- Look for the **"Domains"** section or the main URL at the top
-- It will look like: `https://scholarship-scraper.vercel.app` (this is your **Project URL**)
-- ⚠️ **Don't use** the deployment-specific URLs like `https://scholarship-scraper-git-main-username.vercel.app`
+- Look for the **"Domains"** section - this shows your **Project URL**
+- If you have a custom domain set up, use that (e.g., `grantly-scholarships.vercel.app`)
+- Otherwise, use the default project URL (e.g., `https://scholarship-scraper.vercel.app`)
+- ⚠️ **Don't use** the deployment-specific URLs like `https://scholarship-scraper-5hmrnhnn3-ishaans-projects-9adbddf4.vercel.app`
 
 1. **Update Auth0 Application Settings:**
    - Go to Auth0 Dashboard → Applications → Your Application → Settings
-   - **Allowed Callback URLs** (use your **Project URL**, not deployment URL):
+   - **Allowed Callback URLs** (use your **Project URL** from Domains section):
      ```
-     http://localhost:3000/api/auth/callback, https://your-project.vercel.app/api/auth/callback
+     http://localhost:3000/api/auth/callback, https://grantly-scholarships.vercel.app/api/auth/callback
      ```
    - **Allowed Logout URLs**:
      ```
-     http://localhost:3000, https://your-project.vercel.app
+     http://localhost:3000, https://grantly-scholarships.vercel.app
      ```
    - **Allowed Web Origins**:
      ```
-     http://localhost:3000, https://your-project.vercel.app
+     http://localhost:3000, https://grantly-scholarships.vercel.app
      ```
    - Click "Save Changes"
 
 2. **Update Vercel Environment Variables:**
    - Go to Vercel Dashboard → Your Project → Settings → Environment Variables
-   - Find `AUTH0_BASE_URL` and update it to your **Project URL**:
+   - Find `AUTH0_BASE_URL` and update it to your **Project URL** (from Domains section):
      ```
-     https://your-project.vercel.app
+     https://grantly-scholarships.vercel.app
      ```
    - Make sure it's set for **Production** environment
    - Click "Save"
