@@ -28,7 +28,39 @@ export async function GET(request: NextRequest) {
         application_status: 'Not Started',
         requirements: doc.eligibility ?? [],
       }))
-      return NextResponse.json(allScholarships)
+      
+      // Remove duplicates by normalized title (more aggressive normalization)
+      // Normalize function to handle special characters and whitespace
+      const normalizeForComparison = (text: string): string => {
+        return (text || '')
+          .toLowerCase()
+          .trim()
+          .replace(/[^\w\s]/g, '') // Remove special characters
+          .replace(/\s+/g, ' ') // Normalize whitespace
+      }
+      
+      const seen = new Map<string, number>()
+      const uniqueScholarships: typeof allScholarships = []
+      
+      for (const scholarship of allScholarships) {
+        // Normalize title only (ignore source since same scholarship might have different sources)
+        const normalizedTitle = normalizeForComparison(scholarship.scholarship_name || '')
+        const key = normalizedTitle
+        
+        if (!seen.has(key)) {
+          seen.set(key, uniqueScholarships.length)
+          uniqueScholarships.push(scholarship)
+        } else {
+          // Duplicate found - log it for debugging
+          const existingIndex = seen.get(key)!
+          const existing = uniqueScholarships[existingIndex]
+          console.log(`[Deduplication] Found duplicate: "${scholarship.scholarship_name}" (keeping first occurrence, existing: "${existing.scholarship_name}")`)
+        }
+      }
+      
+      console.log(`[Deduplication] Filtered ${allScholarships.length} scholarships to ${uniqueScholarships.length} unique entries`)
+      
+      return NextResponse.json(uniqueScholarships)
     }
 
     const user = await db.collection('users').findOne({ auth0_id: session.user.sub })
@@ -77,6 +109,16 @@ export async function GET(request: NextRequest) {
           application_status: match?.application_status || 'Not Started',
           requirements: doc.eligibility || [],
         }
+      })
+      
+      // Remove duplicates by scholarship_id (in case there are multiple matches for the same scholarship)
+      const seen = new Set<string>()
+      scholarships = scholarships.filter((scholarship) => {
+        if (seen.has(scholarship.scholarship_id)) {
+          return false
+        }
+        seen.add(scholarship.scholarship_id)
+        return true
       })
     }
 

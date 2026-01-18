@@ -20,6 +20,68 @@ function cosineSimilarity(a: number[], b: number[]): number {
 }
 
 /**
+ * Check if scholarship should be a universal match for Canadian students
+ */
+function isUniversalCanadianMatch(scholarship: any, user: any): boolean {
+  const isCanadian = 
+    user.citizenship?.toLowerCase().includes('canadian') ||
+    user.citizenship?.toLowerCase().includes('permanent resident') ||
+    user.province
+
+  if (!isCanadian) return false
+
+  const title = (scholarship.title || '').toLowerCase()
+  const description = (scholarship.description || '').toLowerCase()
+  const eligibility = Array.isArray(scholarship.eligibility) 
+    ? scholarship.eligibility.join(' ').toLowerCase()
+    : (scholarship.eligibility || '').toLowerCase()
+  
+  const combinedText = `${title} ${description} ${eligibility}`
+
+  const universalKeywords = [
+    'all students in canada',
+    'all canadian students',
+    'open to all students',
+    'all students',
+    'any student',
+    'every student',
+    'no requirements',
+    'no eligibility',
+    'open to everyone',
+    'all post-secondary students',
+    'any canadian student',
+  ]
+
+  const hasUniversalKeyword = universalKeywords.some(keyword => 
+    combinedText.includes(keyword)
+  )
+
+  const easyEntryKeywords = [
+    'no grades',
+    'no essay',
+    'random draw',
+    'randomly selected',
+    'luckiest',
+    'easy',
+    'free to enter',
+  ]
+
+  const hasEasyEntry = easyEntryKeywords.some(keyword => 
+    combinedText.includes(keyword)
+  )
+
+  // Special case: If title contains "luckiest" and (contains "canada" OR source is from studentawards.com), it's universal
+  const hasLuckiest = title.includes('luckiest')
+  const hasCanada = combinedText.includes('canada') || (scholarship.source || '').toLowerCase().includes('studentawards.com')
+  
+  if (hasLuckiest && hasCanada) {
+    return true
+  }
+
+  return hasUniversalKeyword || (hasEasyEntry && hasCanada)
+}
+
+/**
  * Handle CORS preflight requests
  */
 export async function OPTIONS() {
@@ -143,51 +205,114 @@ export async function POST(request: NextRequest) {
 
     // Automatically match new scholarships with all users using embeddings
     // This runs asynchronously so it doesn't block the response
-    const matchThreshold = 0.7 // Minimum similarity score to create a match
+    const matchThreshold = 0 // Set to 0 for testing - will match all scholarships regardless of similarity
     const usersCollection = db.collection('users')
     const matchesCollection = db.collection('matches')
     
-    // Get all users with embeddings
-    const users = await usersCollection
-      .find({ profile_embedding: { $exists: true, $ne: null } })
-      .toArray()
+    // Get all users (need profile data for universal matching, not just embeddings)
+    const users = await usersCollection.find({}).toArray()
 
     // Match asynchronously (fire and forget) - only for newly inserted scholarships
     Promise.all(
       Object.values(result.insertedIds).map(async (scholarshipId, index) => {
         const scholarship = scholarshipsToInsert[index]
-        if (!scholarship || !scholarship.description_embedding) return
+        if (!scholarship) return
 
         for (const user of users) {
-          if (!user.profile_embedding) continue
+          // Check for universal matches first (works even without embeddings)
+          const isUniversalMatch = isUniversalCanadianMatch(scholarship, user)
+          
+          let similarity = 0
+          let shouldMatch = false
+          let matchReason = ''
 
-          try {
-            const similarity = cosineSimilarity(
-              user.profile_embedding,
-              scholarship.description_embedding
-            )
+          if (isUniversalMatch) {
+            similarity = 0.95
+            shouldMatch = true
+            matchReason = 'Universal match - open to all Canadian students'
+            console.log(`[Auto-Matching] ✅ Universal match: "${scholarship.title}" for user ${user.auth0_id}`)
+          } else if (scholarship.description_embedding && user.profile_embedding) {
+            try {
+              similarity = cosineSimilarity(
+                user.profile_embedding,
+                scholarship.description_embedding
+              )
+              shouldMatch = similarity >= matchThreshold
+              matchReason = `Matched by embedding similarity (${Math.round(similarity * 100)}%)`
+            } catch (error) {
+              console.error(`Error calculating similarity for user ${user.auth0_id}:`, error)
+              continue
+            }
+        } else {
+          // Skip if no embedding available and not a universal match
+          continue
+        }
 
-            if (similarity >= matchThreshold) {
-              // Check if match already exists
-              const existingMatch = await matchesCollection.findOne({
+          if (shouldMatch) {
+            // Check if match already exists
+            const existingMatch = await matchesCollection.findOne({
+              user_id: user._id,
+              scholarship_id: scholarshipId,
+            })
+
+            if (!existingMatch) {
+              await matchesCollection.insertOne({
                 user_id: user._id,
                 scholarship_id: scholarshipId,
+                match_score: similarity,
+                reason: matchReason,
+                application_status: 'Not Started',
+                created_at: new Date(),
+                updated_at: new Date(),
               })
-
-              if (!existingMatch) {
-                await matchesCollection.insertOne({
-                  user_id: user._id,
-                  scholarship_id: scholarshipId,
-                  match_score: similarity,
-                  reason: `Matched by embedding similarity (${Math.round(similarity * 100)}%)`,
-                  application_status: 'Not Started',
-                  created_at: new Date(),
-                  updated_at: new Date(),
-                })
-              }
             }
-          } catch (error) {
-            console.error(`Error matching user ${user.auth0_id} with scholarship:`, error)
+          }
+        }
+        
+        // For each scholarship, ensure at least one user gets matched (if any users exist)
+        if (users.length > 0) {
+          const userSimilarities: Array<{ user: any; similarity: number }> = []
+          
+          for (const user of users) {
+            if (!user.profile_embedding) continue
+            try {
+              const similarity = cosineSimilarity(
+                user.profile_embedding,
+                scholarship.description_embedding
+              )
+              userSimilarities.push({ user, similarity })
+            } catch (error) {
+              // Skip this user
+            }
+          }
+          
+          // Check if any user has a match for this scholarship
+          const hasAnyMatch = await matchesCollection.findOne({
+            scholarship_id: scholarshipId,
+          })
+          
+          // If no matches exist and we have similarities, force the best match
+          if (!hasAnyMatch && userSimilarities.length > 0) {
+            userSimilarities.sort((a, b) => b.similarity - a.similarity)
+            const bestMatch = userSimilarities[0]
+            
+            const existingMatch = await matchesCollection.findOne({
+              user_id: bestMatch.user._id,
+              scholarship_id: scholarshipId,
+            })
+            
+            if (!existingMatch) {
+              await matchesCollection.insertOne({
+                user_id: bestMatch.user._id,
+                scholarship_id: scholarshipId,
+                match_score: bestMatch.similarity,
+                reason: `Best available match (${Math.round(bestMatch.similarity * 100)}% similarity) - forced match`,
+                application_status: 'Not Started',
+                created_at: new Date(),
+                updated_at: new Date(),
+              })
+              console.log(`Forced match created for user ${bestMatch.user.auth0_id} with scholarship ${scholarship.title}`)
+            }
           }
         }
       })

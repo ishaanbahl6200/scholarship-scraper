@@ -74,6 +74,43 @@ const schoolOptions = [
   { value: 'St. Thomas University', label: 'St. Thomas University', group: 'New Brunswick' },
   { value: 'Memorial University of Newfoundland', label: 'Memorial University of Newfoundland', group: 'Newfoundland and Labrador' },
   { value: 'University of Prince Edward Island', label: 'University of Prince Edward Island', group: 'Prince Edward Island' },
+  { value: 'Algonquin College', label: 'Algonquin College', group: 'Colleges - Ontario' },
+  { value: 'Seneca College', label: 'Seneca College', group: 'Colleges - Ontario' },
+  { value: 'Humber College', label: 'Humber College', group: 'Colleges - Ontario' },
+  { value: 'George Brown College', label: 'George Brown College', group: 'Colleges - Ontario' },
+  { value: 'Centennial College', label: 'Centennial College', group: 'Colleges - Ontario' },
+  { value: 'Sheridan College', label: 'Sheridan College', group: 'Colleges - Ontario' },
+  { value: 'Fanshawe College', label: 'Fanshawe College', group: 'Colleges - Ontario' },
+  { value: 'Conestoga College', label: 'Conestoga College', group: 'Colleges - Ontario' },
+  { value: 'Mohawk College', label: 'Mohawk College', group: 'Colleges - Ontario' },
+  { value: 'St. Lawrence College', label: 'St. Lawrence College', group: 'Colleges - Ontario' },
+  { value: 'Lambton College', label: 'Lambton College', group: 'Colleges - Ontario' },
+  { value: 'Niagara College', label: 'Niagara College', group: 'Colleges - Ontario' },
+  { value: 'Durham College', label: 'Durham College', group: 'Colleges - Ontario' },
+  { value: 'Fleming College', label: 'Fleming College', group: 'Colleges - Ontario' },
+  { value: 'Loyalist College', label: 'Loyalist College', group: 'Colleges - Ontario' },
+  { value: 'Sault College', label: 'Sault College', group: 'Colleges - Ontario' },
+  { value: 'Cambrian College', label: 'Cambrian College', group: 'Colleges - Ontario' },
+  { value: 'Northern College', label: 'Northern College', group: 'Colleges - Ontario' },
+  { value: 'Confederation College', label: 'Confederation College', group: 'Colleges - Ontario' },
+  { value: 'Canadore College', label: 'Canadore College', group: 'Colleges - Ontario' },
+  { value: 'Georgian College', label: 'Georgian College', group: 'Colleges - Ontario' },
+  { value: 'BCIT', label: 'British Columbia Institute of Technology', group: 'Colleges - British Columbia' },
+  { value: 'Langara College', label: 'Langara College', group: 'Colleges - British Columbia' },
+  { value: 'Douglas College', label: 'Douglas College', group: 'Colleges - British Columbia' },
+  { value: 'Kwantlen Polytechnic University', label: 'Kwantlen Polytechnic University', group: 'Colleges - British Columbia' },
+  { value: 'Camosun College', label: 'Camosun College', group: 'Colleges - British Columbia' },
+  { value: 'Capilano University', label: 'Capilano University', group: 'Colleges - British Columbia' },
+  { value: 'Northern Alberta Institute of Technology', label: 'Northern Alberta Institute of Technology (NAIT)', group: 'Colleges - Alberta' },
+  { value: 'Southern Alberta Institute of Technology', label: 'Southern Alberta Institute of Technology (SAIT)', group: 'Colleges - Alberta' },
+  { value: 'Bow Valley College', label: 'Bow Valley College', group: 'Colleges - Alberta' },
+  { value: 'Red River College', label: 'Red River College', group: 'Colleges - Manitoba' },
+  { value: 'Saskatchewan Polytechnic', label: 'Saskatchewan Polytechnic', group: 'Colleges - Saskatchewan' },
+  { value: 'Nova Scotia Community College', label: 'Nova Scotia Community College (NSCC)', group: 'Colleges - Nova Scotia' },
+  { value: 'New Brunswick Community College', label: 'New Brunswick Community College (NBCC)', group: 'Colleges - New Brunswick' },
+  { value: 'College of the North Atlantic', label: 'College of the North Atlantic', group: 'Colleges - Newfoundland and Labrador' },
+  { value: 'Holland College', label: 'Holland College', group: 'Colleges - Prince Edward Island' },
+  { value: 'Cégep', label: 'Cégep (Quebec)', group: 'Colleges - Quebec' },
   { value: 'Other', label: 'Other', group: '' },
 ]
 
@@ -276,7 +313,7 @@ export default function ProfilePanel() {
 
         if (savedRes.ok) {
           const data = (await savedRes.json()) as SavedScholarship[]
-          setSaved(data.filter((item) => item.status !== 'applied'))
+          setSaved(data)
         }
       } catch (error) {
         console.error('Error loading profile panel:', error)
@@ -321,15 +358,6 @@ export default function ProfilePanel() {
 
   const removeSaved = async (id: string) => {
     await fetch(`/api/saved?scholarshipId=${id}`, { method: 'DELETE' })
-    setSaved((prev) => prev.filter((item) => item.id !== id))
-  }
-
-  const markApplied = async (id: string) => {
-    await fetch('/api/saved', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ scholarshipId: id, status: 'applied' }),
-    })
     setSaved((prev) => prev.filter((item) => item.id !== id))
   }
 
@@ -453,26 +481,49 @@ export default function ProfilePanel() {
 
         <div className="space-y-6">
           <div className="card space-y-3">
-            <h3 className="text-lg font-semibold text-foreground">Saved</h3>
+            <h3 className="text-lg font-semibold text-foreground">Saved Scholarships</h3>
             {saved.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No saved scholarships yet.</p>
+              <p className="text-sm text-muted-foreground">No saved scholarships yet. Bookmark scholarships from the Matches or Scholarships tabs to see them here.</p>
             ) : (
-              saved.map((item) => (
-                <div key={item.id} className="flex items-center justify-between text-sm">
-                  <span>{item.name}</span>
-                  <div className="flex gap-2">
-                    <button onClick={() => markApplied(item.id)} className="text-primary">
-                      Mark applied
-                    </button>
-                    <button onClick={() => removeSaved(item.id)} className="text-muted-foreground">
-                      Remove
-                    </button>
+              <div className="space-y-3">
+                {saved.map((item) => (
+                  <div key={item.id} className="border-b border-border pb-3 last:border-0 space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1">
+                        <h4 className="font-medium text-foreground text-sm">{item.name}</h4>
+                        <div className="flex flex-wrap gap-2 mt-1 text-xs text-muted-foreground">
+                          {item.amount && (
+                            <span>${item.amount.toLocaleString()}</span>
+                          )}
+                          {item.deadline && (
+                            <span>· Deadline: {new Date(item.deadline).toLocaleDateString()}</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {item.applicationUrl && (
+                        <a
+                          href={item.applicationUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-xs text-primary hover:text-primary/80"
+                        >
+                          View details →
+                        </a>
+                      )}
+                      <button 
+                        onClick={() => removeSaved(item.id)} 
+                        className="text-xs text-muted-foreground hover:text-foreground"
+                      >
+                        Remove
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))
+                ))}
+              </div>
             )}
           </div>
-
         </div>
       </div>
     </section>

@@ -167,6 +167,10 @@ export async function POST(request: NextRequest) {
     // Silently fail - onboarding should still succeed
     console.error('Scraper trigger error:', scraperError)
   }
+  
+  // Note: Matching will be triggered automatically when scholarships are scraped
+  // or can be manually triggered via the dashboard. The matching logic now ensures
+  // at least one match is created even if similarity is low.
 
   return NextResponse.json({ ok: true })
 }

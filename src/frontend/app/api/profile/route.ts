@@ -135,6 +135,7 @@ export async function PATCH(request: NextRequest) {
     })
 
     // Trigger scraper workflow after profile update (fire and forget)
+    // Matching will happen automatically when scholarships are scraped
     try {
       const gumloopApiKey = process.env.GUMLOOP_API_KEY
       const gumloopScraperWorkflowId = process.env.GUMLOOP_SCRAPER_WORKFLOW_ID

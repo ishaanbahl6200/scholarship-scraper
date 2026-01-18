@@ -42,6 +42,7 @@ export async function GET() {
       name: doc.title,
       amount: doc.amount,
       deadline: doc.deadline ?? null,
+      applicationUrl: doc.source || null,
       status: statusMap.get(doc._id.toString()) || 'saved',
     }))
 

@@ -28,5 +28,6 @@ export interface SavedScholarship {
   name: string
   amount?: number | null
   deadline?: string | null
+  applicationUrl?: string | null
   status: string
 }

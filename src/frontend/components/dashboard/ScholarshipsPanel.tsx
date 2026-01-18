@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Search, RefreshCw } from 'lucide-react'
+import { Search, RefreshCw, Bookmark } from 'lucide-react'
 import { TypingAnimation } from '@/components/ui/typing-animation'
 import { ScholarshipCard } from '@/lib/types'
 
@@ -32,19 +32,26 @@ export default function ScholarshipsPanel() {
   const [loading, setLoading] = useState(true)
   const [scraping, setScraping] = useState(false)
   const [scrapeProgress, setScrapeProgress] = useState(0)
-  const [matching, setMatching] = useState(false)
-  const [matchProgress, setMatchProgress] = useState(0)
   const [lastScrapeTime, setLastScrapeTime] = useState<string | null>(null)
+  const [savedIds, setSavedIds] = useState<Set<string>>(new Set())
 
   const loadScholarships = async () => {
     setLoading(true)
     try {
-      const response = await fetch('/api/scholarships?scope=all')
-      if (!response.ok) {
-        return
+      const [scholarshipsRes, savedRes] = await Promise.all([
+        fetch('/api/scholarships?scope=all'),
+        fetch('/api/saved'),
+      ])
+      
+      if (scholarshipsRes.ok) {
+        const data = (await scholarshipsRes.json()) as ApiScholarship[]
+        setItems(data.map(mapScholarship))
       }
-      const data = (await response.json()) as ApiScholarship[]
-      setItems(data.map(mapScholarship))
+      
+      if (savedRes.ok) {
+        const saved = (await savedRes.json()) as Array<{ id: string }>
+        setSavedIds(new Set(saved.map((item) => item.id)))
+      }
     } catch (error) {
       console.error('Error loading scholarships:', error)
     } finally {
@@ -52,51 +59,6 @@ export default function ScholarshipsPanel() {
     }
   }
 
-  const handleMatching = async () => {
-    setMatching(true)
-    setMatchProgress(0)
-    
-    // Simulate progress (matching typically takes 5-15 seconds)
-    const matchProgressInterval = setInterval(() => {
-      setMatchProgress((prev) => {
-        if (prev >= 90) return prev // Stop at 90% until completion
-        return prev + Math.random() * 10 // Increment by 0-10%
-      })
-    }, 500)
-
-    try {
-      const response = await fetch('/api/gumloop/trigger-matching', {
-        method: 'POST',
-      })
-      
-      if (response.ok) {
-        const data = await response.json()
-        
-        // Wait for matching to complete (typically 5-15 seconds)
-        setTimeout(() => {
-          clearInterval(matchProgressInterval)
-          setMatchProgress(100)
-          
-          // Wait a bit more for processing
-          setTimeout(() => {
-            setMatching(false)
-            setMatchProgress(0)
-          }, 1000)
-        }, 10000) // 10 seconds estimate
-      } else {
-        clearInterval(matchProgressInterval)
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
-        console.error(`Failed to update matches: ${errorData.error || 'Please try again.'}`)
-        setMatching(false)
-        setMatchProgress(0)
-      }
-    } catch (error) {
-      clearInterval(matchProgressInterval)
-      console.error('Error triggering matching:', error)
-      setMatching(false)
-      setMatchProgress(0)
-    }
-  }
 
   useEffect(() => {
     loadScholarships()
@@ -140,36 +102,8 @@ export default function ScholarshipsPanel() {
           localStorage.removeItem('scrapeWorkflowId')
           localStorage.setItem('lastScrapeTime', new Date().toISOString())
           setLastScrapeTime(new Date().toISOString())
-          // Trigger matching after scrape completes
-          setMatching(true)
-          setMatchProgress(0)
-          const matchInterval = setInterval(() => {
-            setMatchProgress((prev) => {
-              if (prev >= 90) return prev
-              return prev + Math.random() * 10
-            })
-          }, 500)
-          try {
-            const matchResponse = await fetch('/api/gumloop/trigger-matching', { method: 'POST' })
-            if (matchResponse.ok) {
-              setTimeout(() => {
-                clearInterval(matchInterval)
-                setMatchProgress(100)
-                setTimeout(() => {
-                  setMatching(false)
-                  setMatchProgress(0)
-                }, 1000)
-              }, 10000)
-            } else {
-              clearInterval(matchInterval)
-              setMatching(false)
-              setMatchProgress(0)
-            }
-          } catch {
-            clearInterval(matchInterval)
-            setMatching(false)
-            setMatchProgress(0)
-          }
+          // Matching happens automatically when scholarships are added via /api/gumloop/scholarships
+          // No need to manually trigger it here
         }, remainingTime * 1000)
         
         // Cleanup on unmount
@@ -189,6 +123,21 @@ export default function ScholarshipsPanel() {
     const lower = query.toLowerCase()
     return items.filter((item) => item.name.toLowerCase().includes(lower))
   }, [items, query])
+
+  const saveScholarship = async (id: string) => {
+    try {
+      const response = await fetch('/api/saved', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scholarshipId: id }),
+      })
+      if (response.ok) {
+        setSavedIds(new Set([...savedIds, id]))
+      }
+    } catch (error) {
+      console.error('Error saving scholarship:', error)
+    }
+  }
 
   const handleRefresh = async () => {
     setScraping(true)
@@ -238,8 +187,8 @@ export default function ScholarshipsPanel() {
           localStorage.setItem('lastScrapeTime', new Date().toISOString())
           setLastScrapeTime(new Date().toISOString())
           
-          // Now trigger matching
-          await handleMatching()
+          // Matching happens automatically when scholarships are added via /api/gumloop/scholarships
+          // No need to manually trigger it here
         }, 45000) // 45 seconds estimate
       } else {
         clearInterval(scrapeProgressInterval)
@@ -282,11 +231,11 @@ export default function ScholarshipsPanel() {
           </div>
           <button
             onClick={handleRefresh}
-            disabled={scraping || matching}
+            disabled={scraping}
             className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
-            title="Refresh scholarships and update matches"
+            title="Refresh scholarships"
           >
-            <RefreshCw className={`h-5 w-5 ${scraping || matching ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-5 w-5 ${scraping ? 'animate-spin' : ''}`} />
           </button>
         </div>
         {scraping && (
@@ -299,19 +248,6 @@ export default function ScholarshipsPanel() {
             </div>
             <p className="text-xs text-muted-foreground mt-1 text-center">
               Scraping scholarships... {Math.round(scrapeProgress)}%
-            </p>
-          </div>
-        )}
-        {matching && (
-          <div className="w-full">
-            <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-              <div
-                className="h-full bg-primary transition-all duration-300 ease-out"
-                style={{ width: `${matchProgress}%` }}
-              />
-            </div>
-            <p className="text-xs text-muted-foreground mt-1 text-center">
-              Updating matches... {Math.round(matchProgress)}%
             </p>
           </div>
         )}
@@ -335,25 +271,36 @@ export default function ScholarshipsPanel() {
           {filtered.map((card) => (
             <div key={card.id} className="card card-result space-y-3">
               <div className="flex items-start justify-between">
-                <div>
+                <div className="flex-1">
                   <h3 className="text-lg font-semibold text-foreground">{card.name}</h3>
                   <p className="text-sm text-muted-foreground">
                     {card.amount ? `$${card.amount.toLocaleString()}` : 'Amount TBD'} ·{' '}
                     {card.deadline ? `Deadline ${new Date(card.deadline).toLocaleDateString()}` : 'Deadline TBD'}
                   </p>
                 </div>
-                {card.applicationUrl ? (
-                  <a
-                    href={card.applicationUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-sm text-primary hover:text-primary/80"
+                <div className="flex items-center gap-3">
+                  {card.applicationUrl ? (
+                    <a
+                      href={card.applicationUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-sm text-primary hover:text-primary/80"
+                    >
+                      View details
+                    </a>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">No link</span>
+                  )}
+                  <button
+                    onClick={() => saveScholarship(card.id)}
+                    className="btn-secondary flex items-center gap-2 text-sm"
+                    disabled={savedIds.has(card.id)}
+                    title={savedIds.has(card.id) ? 'Already saved' : 'Save scholarship'}
                   >
-                    View details
-                  </a>
-                ) : (
-                  <span className="text-xs text-muted-foreground">No link</span>
-                )}
+                    <Bookmark className={`h-4 w-4 ${savedIds.has(card.id) ? 'fill-current' : ''}`} />
+                    {savedIds.has(card.id) ? 'Saved' : 'Save'}
+                  </button>
+                </div>
               </div>
               <div className="flex flex-wrap gap-2">
                 {card.tags.length === 0 ? (
