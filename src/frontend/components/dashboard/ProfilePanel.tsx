@@ -487,12 +487,20 @@ export default function ProfilePanel() {
             ) : (
               <div className="space-y-3">
                 {saved.map((item) => (
-                  <div key={item.id} className="border-b border-border pb-3 last:border-0 space-y-2">
+                  <div
+                    key={item.id}
+                    className="border-b border-border pb-3 last:border-0 space-y-2 rounded-lg p-3 cursor-pointer hover:bg-white/10 transition-colors"
+                    onClick={() => {
+                      if (item.applicationUrl) {
+                        window.open(item.applicationUrl, '_blank', 'noopener,noreferrer')
+                      }
+                    }}
+                  >
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1">
                         <h4 className="font-medium text-foreground text-sm">{item.name}</h4>
                         <div className="flex flex-wrap gap-2 mt-1 text-xs text-muted-foreground">
-                          {item.amount && (
+                          {item.amount && item.amount > 0 && (
                             <span>${item.amount.toLocaleString()}</span>
                           )}
                           {item.deadline && (
@@ -502,18 +510,11 @@ export default function ProfilePanel() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      {item.applicationUrl && (
-                        <a
-                          href={item.applicationUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-xs text-primary hover:text-primary/80"
-                        >
-                          View details →
-                        </a>
-                      )}
                       <button 
-                        onClick={() => removeSaved(item.id)} 
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          removeSaved(item.id)
+                        }}
                         className="text-xs text-muted-foreground hover:text-foreground"
                       >
                         Remove

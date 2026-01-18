@@ -13,23 +13,39 @@ type ApiScholarship = {
   deadline: string | null
   application_url: string
   requirements: string[]
+  match_reason?: string | null
 }
 
 function mapScholarship(item: ApiScholarship): ScholarshipCard {
   const safeTags = Array.isArray(item.requirements) ? item.requirements : []
+  
+  // Normalize amount - handle if it's a string with dollar sign or number
+  let normalizedAmount: number | null = null
+  if (item.award_amount) {
+    if (typeof item.award_amount === 'number') {
+      normalizedAmount = item.award_amount > 0 ? item.award_amount : null
+    } else if (typeof item.award_amount === 'string') {
+      // Remove dollar signs, commas, and extract number
+      const cleaned = item.award_amount.replace(/[^0-9.]/g, '')
+      const parsed = parseFloat(cleaned)
+      normalizedAmount = parsed > 0 ? parsed : null
+    }
+  }
+  
   return {
     id: item.scholarship_id,
     name: item.scholarship_name,
-    amount: item.award_amount,
+    amount: normalizedAmount,
     deadline: item.deadline,
     tags: safeTags.slice(0, 2),
     matchScore: item.match_score ?? null,
     applicationUrl: item.application_url,
+    matchReason: item.match_reason ?? null,
   }
 }
 
 export default function MatchesPanel() {
-  const [items, setItems] = useState<ScholarshipCard[]>([])
+  const [items, setItems] = useState<ApiScholarship[]>([])
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
   const [onboardingComplete, setOnboardingComplete] = useState(false)
@@ -69,7 +85,7 @@ export default function MatchesPanel() {
       }
       const data = (await response.json()) as ApiScholarship[]
       console.log('Loaded matches:', data.length, data)
-      setItems(data.map(mapScholarship))
+      setItems(data)
     } catch (error) {
       console.error('Error loading matches:', error)
     } finally {
@@ -121,17 +137,17 @@ export default function MatchesPanel() {
   }
 
 
-  const cards = useMemo(() => items, [items])
+  const cards = useMemo(() => items.map(mapScholarship), [items])
 
   return (
     <section className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="text-center flex-1">
-          <h2 className="text-2xl font-semibold text-foreground">Matches</h2>
+      <div className="flex flex-col items-center gap-4 mb-8">
+        <h2 className="text-4xl md:text-5xl font-semibold text-foreground text-center">Matches</h2>
+        <div className="text-center">
           <TypingAnimation
             text="our top picks, tailored for you..."
             duration={30}
-            className="text-sm md:text-base font-normal text-center text-muted-foreground leading-normal tracking-normal drop-shadow-none"
+            className="text-lg md:text-xl font-normal text-center text-muted-foreground leading-normal tracking-normal drop-shadow-none"
           />
         </div>
       </div>
@@ -172,20 +188,40 @@ export default function MatchesPanel() {
           )}
         </div>
       ) : (
-        <div className="grid gap-6 md:grid-cols-2 max-h-[70vh] overflow-y-auto pr-2">
-          {cards.map((card) => (
-            <div key={card.id} className="card card-result space-y-4">
+            <div className="space-y-4 max-h-[50vh] overflow-y-auto pr-2 w-full">
+          {cards.map((card, index) => {
+            const item = items[index]
+            return (
+            <div
+              key={card.id}
+              className="card card-result space-y-4 cursor-pointer"
+              style={{ height: '99.32px' }}
+              onClick={() => {
+                if (card.applicationUrl) {
+                  window.open(card.applicationUrl, '_blank', 'noopener,noreferrer')
+                }
+              }}
+            >
               <div className="flex items-start justify-between">
-                <div>
+                <div className="flex-1">
                   <h3 className="text-lg font-semibold text-foreground">{card.name}</h3>
                   <p className="text-sm text-muted-foreground">
-                    {card.amount && `$${card.amount.toLocaleString()}`}
-                    {card.amount && card.deadline && ' · '}
-                    {card.deadline ? `Deadline ${new Date(card.deadline).toLocaleDateString()}` : card.amount ? '' : 'Deadline TBD'}
+                    {card.amount && card.amount > 0 && (
+                      <>
+                        ${card.amount.toLocaleString()}
+                        {card.deadline && ' · '}
+                      </>
+                    )}
+                    {card.deadline && `Deadline ${new Date(card.deadline).toLocaleDateString()}`}
                   </p>
+                  {item?.match_reason && (
+                    <p className="text-xs text-muted-foreground mt-2 italic">
+                      {item.match_reason}
+                    </p>
+                  )}
                 </div>
                 {card.matchScore !== null && (
-                  <span className="badge bg-primary/10 text-primary">{card.matchScore}%</span>
+                  <span className="badge bg-primary/10 text-primary ml-4">{card.matchScore}%</span>
                 )}
               </div>
 
@@ -199,29 +235,21 @@ export default function MatchesPanel() {
                 </div>
               )}
 
-              <div className="flex items-center justify-between">
-                {card.applicationUrl ? (
-                  <a
-                    href={card.applicationUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-sm text-primary hover:text-primary/80"
-                  >
-                    View details
-                  </a>
-                ) : (
-                  <span className="text-xs text-muted-foreground">No link provided</span>
-                )}
-                    <button
-                      onClick={() => saveScholarship(card.id)}
-                      className={`btn-secondary flex items-center gap-2 text-sm ${savedIds.has(card.id) ? 'bg-primary/10 text-primary' : ''}`}
-                    >
-                      <Bookmark className={`h-4 w-4 ${savedIds.has(card.id) ? 'fill-current' : ''}`} />
-                      {savedIds.has(card.id) ? 'Saved' : 'Save'}
-                    </button>
+              <div className="flex items-center justify-end">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    saveScholarship(card.id)
+                  }}
+                  className={`btn-secondary flex items-center gap-2 text-sm ${savedIds.has(card.id) ? 'bg-primary/10 text-primary' : ''}`}
+                >
+                  <Bookmark className={`h-4 w-4 ${savedIds.has(card.id) ? 'fill-current' : ''}`} />
+                  {savedIds.has(card.id) ? 'Saved' : 'Save'}
+                </button>
               </div>
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </section>
