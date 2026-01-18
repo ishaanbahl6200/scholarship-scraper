@@ -18,7 +18,6 @@ interface Scholarship {
 
 export default function DashboardClient({ user }: { user: any }) {
   const { user: authUser } = useUser()
-  const [activeIndex, setActiveIndex] = useState(0)
   const [scholarships, setScholarships] = useState<Scholarship[]>([])
   const [loading, setLoading] = useState(true)
   const [resyncing, setResyncing] = useState(false)
@@ -66,19 +65,18 @@ export default function DashboardClient({ user }: { user: any }) {
       
       if (response.ok) {
         const data = await response.json()
-        // Wait a bit for Gumloop to process, then refresh scholarships
-        setTimeout(() => {
-          fetchScholarships()
-          setResyncing(false)
-        }, 2000)
-      } else {
+        alert(`Matching completed! ${data.matches_created || 0} new matches created, ${data.matches_updated || 0} matches updated.`)
+        fetchScholarships()
         setResyncing(false)
-        alert('Failed to resync. Please try again.')
+      } else {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+        setResyncing(false)
+        alert(`Failed to resync: ${errorData.error || 'Please try again.'}`)
       }
     } catch (error) {
       console.error('Error resyncing:', error)
       setResyncing(false)
-      alert('Failed to resync. Please try again.')
+      alert(`Failed to resync: ${error instanceof Error ? error.message : 'Please try again.'}`)
     }
   }
 
@@ -154,20 +152,6 @@ export default function DashboardClient({ user }: { user: any }) {
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <div className="relative h-screen overflow-hidden">
-        <motion.div
-          key={activeIndex}
-          className="w-screen h-full px-4 sm:px-6 lg:px-8 pb-24 pt-6"
-          initial={{ opacity: 0, x: activeIndex > 0 ? 40 : -40 }}
-          animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: activeIndex > 0 ? -40 : 40 }}
-          transition={{ type: 'spring', stiffness: 120, damping: 20 }}
-        >
-          <div className="max-w-7xl mx-auto h-full">
-            {activeIndex === 0 && <MatchesPanel />}
-            {activeIndex === 1 && <ScholarshipsPanel />}
-            {activeIndex === 2 && <ProfilePanel />}
     <div className="min-h-screen bg-gray-50">
       {/* Navigation */}
       <nav className="bg-white shadow-sm border-b border-gray-200">
@@ -396,20 +380,6 @@ export default function DashboardClient({ user }: { user: any }) {
           </div>
         )}
       </div>
-
-      <NavBar
-        items={slides.map((slide, index) => ({
-          name: slide.name,
-          url: `#slide-${index}`,
-          icon: slide.icon,
-        }))}
-        onSelect={(name) => {
-          const nextIndex = slides.findIndex((slide) => slide.name === name)
-          if (nextIndex >= 0) {
-            setActiveIndex(nextIndex)
-          }
-        }}
-      />
     </div>
   )
 }
