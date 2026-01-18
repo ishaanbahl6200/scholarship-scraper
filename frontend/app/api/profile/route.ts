@@ -1,5 +1,6 @@
 import { getSession } from '@auth0/nextjs-auth0'
 import { NextRequest, NextResponse } from 'next/server'
+import clientPromise from '@/lib/mongodb'
 
 export async function GET() {
   const session = await getSession()
@@ -11,26 +12,13 @@ export async function GET() {
   const auth0UserId = session.user.sub
 
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    const client = await clientPromise
+    const db = client.db('grantly')
+    const students = db.collection('students')
 
-    const response = await fetch(
-      `${supabaseUrl}/rest/v1/students?auth0_user_id=eq.${auth0UserId}`,
-      {
-        headers: {
-          apikey: supabaseKey!,
-          Authorization: `Bearer ${supabaseKey}`,
-        },
-      }
-    )
-
-    if (!response.ok) {
-      throw new Error('Failed to fetch profile')
-    }
-
-    const data = await response.json()
+    const profile = await students.findOne({ auth0_user_id: auth0UserId })
     
-    if (data.length === 0) {
+    if (!profile) {
       // Profile doesn't exist yet, return default
       return NextResponse.json({
         auth0_user_id: auth0UserId,
@@ -52,7 +40,9 @@ export async function GET() {
       })
     }
 
-    return NextResponse.json(data[0])
+    // Remove MongoDB _id field
+    const { _id, ...profileData } = profile
+    return NextResponse.json(profileData)
   } catch (error) {
     console.error('Error fetching profile:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -70,64 +60,33 @@ export async function PUT(request: NextRequest) {
   const profile = await request.json()
 
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    const client = await clientPromise
+    const db = client.db('grantly')
+    const students = db.collection('students')
 
-    // Check if profile exists
-    const checkResponse = await fetch(
-      `${supabaseUrl}/rest/v1/students?auth0_user_id=eq.${auth0UserId}&select=auth0_user_id`,
-      {
-        headers: {
-          apikey: supabaseKey!,
-          Authorization: `Bearer ${supabaseKey}`,
-        },
-      }
-    )
-
-    const checkData = await checkResponse.json()
     const profileData = {
       ...profile,
       auth0_user_id: auth0UserId,
-      updated_at: new Date().toISOString(),
-      profile_completed_at: checkData.length === 0 ? new Date().toISOString() : undefined,
+      updated_at: new Date(),
+      profile_completed_at: profile.profile_completed_at || new Date(),
     }
 
-    let response
-    if (checkData.length === 0) {
-      // Insert new profile
-      response = await fetch(`${supabaseUrl}/rest/v1/students`, {
-        method: 'POST',
-        headers: {
-          apikey: supabaseKey!,
-          Authorization: `Bearer ${supabaseKey}`,
-          'Content-Type': 'application/json',
-          Prefer: 'return=representation',
-        },
-        body: JSON.stringify(profileData),
-      })
-    } else {
-      // Update existing profile
-      response = await fetch(
-        `${supabaseUrl}/rest/v1/students?auth0_user_id=eq.${auth0UserId}`,
-        {
-          method: 'PATCH',
-          headers: {
-            apikey: supabaseKey!,
-            Authorization: `Bearer ${supabaseKey}`,
-            'Content-Type': 'application/json',
-            Prefer: 'return=representation',
-          },
-          body: JSON.stringify(profileData),
-        }
-      )
-    }
+    // Upsert: update if exists, insert if not
+    const result = await students.findOneAndUpdate(
+      { auth0_user_id: auth0UserId },
+      { 
+        $set: profileData,
+        $setOnInsert: { created_at: new Date() }
+      },
+      { 
+        upsert: true,
+        returnDocument: 'after'
+      }
+    )
 
-    if (!response.ok) {
-      throw new Error('Failed to save profile')
-    }
-
-    const data = await response.json()
-    return NextResponse.json(Array.isArray(data) ? data[0] : data)
+    // Remove MongoDB _id field
+    const { _id, ...updatedProfile } = result.value || profileData
+    return NextResponse.json(updatedProfile)
   } catch (error) {
     console.error('Error saving profile:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
