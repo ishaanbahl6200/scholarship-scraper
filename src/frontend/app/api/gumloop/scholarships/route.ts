@@ -1,5 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
+import { generateEmbedding } from '@/lib/gemini'
+import { ObjectId } from 'mongodb'
+
+/**
+ * Calculate cosine similarity between two embeddings
+ */
+function cosineSimilarity(a: number[], b: number[]): number {
+  if (a.length !== b.length) return 0
+  let dotProduct = 0
+  let normA = 0
+  let normB = 0
+  for (let i = 0; i < a.length; i++) {
+    dotProduct += a[i] * b[i]
+    normA += a[i] * a[i]
+    normB += b[i] * b[i]
+  }
+  return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB))
+}
 
 /**
  * Handle CORS preflight requests
@@ -33,11 +51,23 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { scholarships } = body
+    
+    // Handle different payload formats
+    let scholarships: any[] = []
+    if (Array.isArray(body)) {
+      // If body is directly an array
+      scholarships = body
+    } else if (body.scholarships && Array.isArray(body.scholarships)) {
+      // If body has scholarships key
+      scholarships = body.scholarships
+    } else if (body.scholarship) {
+      // If single scholarship object
+      scholarships = [body.scholarship]
+    }
 
     if (!Array.isArray(scholarships) || scholarships.length === 0) {
       return NextResponse.json(
-        { error: 'Invalid payload: scholarships array is required' },
+        { error: 'Invalid payload: scholarships array is required. Received:', body: JSON.stringify(body).substring(0, 200) },
         { status: 400 }
       )
     }
@@ -58,49 +88,89 @@ export async function POST(request: NextRequest) {
       updated_at: new Date(),
     }))
 
-    // Insert all scholarships
-    const result = await scholarshipsCollection.insertMany(docs)
-
-    // Trigger matching workflow for all users after new scholarships are added
-    // This runs asynchronously so it doesn't block the response
-    const gumloopApiKey = process.env.GUMLOOP_API_KEY
-    const gumloopMatchingWorkflowId = process.env.GUMLOOP_MATCHING_WORKFLOW_ID
-    const gumloopUserId = process.env.GUMLOOP_USER_ID
-
-    if (gumloopApiKey && gumloopMatchingWorkflowId && gumloopUserId) {
-      // Get all users and trigger matching for each
-      const usersCollection = db.collection('users')
-      const users = await usersCollection.find({}).toArray()
-      
-      // Trigger matching workflow for each user (fire and forget)
-      users.forEach(async (user) => {
-        try {
-          await fetch(
-            `https://api.gumloop.com/api/v1/start_pipeline?user_id=${gumloopUserId}&saved_item_id=${gumloopMatchingWorkflowId}`,
-            {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${gumloopApiKey}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                auth0_user_id: user.auth0_id,
-                trigger: 'new_scholarships_added',
-              }),
+    // Generate embeddings for scholarships that don't have them
+    const scholarshipsWithEmbeddings = await Promise.all(
+      docs.map(async (doc, index) => {
+        if (!doc.description_embedding && doc.description) {
+          try {
+            const embedding = await generateEmbedding(
+              `${doc.title} ${doc.description} ${Array.isArray(doc.eligibility) ? doc.eligibility.join(' ') : doc.eligibility || ''}`
+            )
+            if (embedding) {
+              doc.description_embedding = embedding
             }
-          )
-        } catch (error) {
-          console.error(`Failed to trigger matching for user ${user.auth0_id}:`, error)
-          // Don't fail the whole request if matching trigger fails
+          } catch (error) {
+            console.error(`Failed to generate embedding for scholarship ${index}:`, error)
+          }
+        }
+        return doc
+      })
+    )
+
+    // Insert all scholarships
+    const result = await scholarshipsCollection.insertMany(scholarshipsWithEmbeddings)
+
+    // Automatically match new scholarships with all users using embeddings
+    // This runs asynchronously so it doesn't block the response
+    const matchThreshold = 0.7 // Minimum similarity score to create a match
+    const usersCollection = db.collection('users')
+    const matchesCollection = db.collection('matches')
+    
+    // Get all users with embeddings
+    const users = await usersCollection
+      .find({ profile_embedding: { $exists: true, $ne: null } })
+      .toArray()
+
+    // Match asynchronously (fire and forget)
+    Promise.all(
+      Object.values(result.insertedIds).map(async (scholarshipId, index) => {
+        const scholarship = scholarshipsWithEmbeddings[index]
+        if (!scholarship.description_embedding) return
+
+        for (const user of users) {
+          if (!user.profile_embedding) continue
+
+          try {
+            const similarity = cosineSimilarity(
+              user.profile_embedding,
+              scholarship.description_embedding
+            )
+
+            if (similarity >= matchThreshold) {
+              // Check if match already exists
+              const existingMatch = await matchesCollection.findOne({
+                user_id: user._id,
+                scholarship_id: scholarshipId,
+              })
+
+              if (!existingMatch) {
+                await matchesCollection.insertOne({
+                  user_id: user._id,
+                  scholarship_id: scholarshipId,
+                  match_score: similarity,
+                  reason: `Matched by embedding similarity (${Math.round(similarity * 100)}%)`,
+                  application_status: 'Not Started',
+                  created_at: new Date(),
+                  updated_at: new Date(),
+                })
+              }
+            }
+          } catch (error) {
+            console.error(`Error matching user ${user.auth0_id} with scholarship:`, error)
+          }
         }
       })
-    }
+    ).catch(error => {
+      console.error('Error in matching process:', error)
+      // Don't fail the request if matching fails
+    })
 
     return NextResponse.json({
       success: true,
       count: result.insertedCount,
       scholarship_ids: Object.values(result.insertedIds).map(id => id.toString()),
-      matching_triggered: gumloopApiKey && gumloopMatchingWorkflowId && gumloopUserId,
+      matching_triggered: true,
+      users_matched: users.length,
     })
   } catch (error) {
     console.error('Gumloop bulk import error:', error)

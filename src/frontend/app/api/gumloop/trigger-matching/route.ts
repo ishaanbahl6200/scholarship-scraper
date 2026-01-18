@@ -1,14 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@auth0/nextjs-auth0'
+import { getDb } from '@/lib/db'
+import { ObjectId } from 'mongodb'
 
 /**
- * Trigger Gumloop Matching Workflow
+ * Calculate cosine similarity between two embeddings
+ */
+function cosineSimilarity(a: number[], b: number[]): number {
+  if (a.length !== b.length) return 0
+  let dotProduct = 0
+  let normA = 0
+  let normB = 0
+  for (let i = 0; i < a.length; i++) {
+    dotProduct += a[i] * b[i]
+    normA += a[i] * a[i]
+    normB += b[i] * b[i]
+  }
+  return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB))
+}
+
+/**
+ * Re-match User with All Scholarships
  * Called when a user updates their profile or manually requests matching
- * 
- * This endpoint can trigger a Gumloop workflow to:
- * 1. Re-match user with all scholarships
- * 2. Send email digest with new matches
- * 3. Update match scores
+ * Uses embedding-based cosine similarity for matching
  */
 export async function POST(request: NextRequest) {
   const session = await getSession()
@@ -18,51 +32,100 @@ export async function POST(request: NextRequest) {
   }
 
   const auth0UserId = session.user.sub
-  const gumloopApiKey = process.env.GUMLOOP_API_KEY
-  const gumloopWorkflowId = process.env.GUMLOOP_MATCHING_WORKFLOW_ID
-  const gumloopUserId = process.env.GUMLOOP_USER_ID
-
-  if (!gumloopApiKey || !gumloopWorkflowId || !gumloopUserId) {
-    return NextResponse.json(
-      { error: 'Gumloop not configured. Missing GUMLOOP_API_KEY, GUMLOOP_MATCHING_WORKFLOW_ID, or GUMLOOP_USER_ID' },
-      { status: 500 }
-    )
-  }
 
   try {
-    // Trigger Gumloop matching workflow using webhook URL format
-    // Format: https://api.gumloop.com/api/v1/start_pipeline?user_id=xxx&saved_item_id=xxx
-    const response = await fetch(
-      `https://api.gumloop.com/api/v1/start_pipeline?user_id=${gumloopUserId}&saved_item_id=${gumloopWorkflowId}`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${gumloopApiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          auth0_user_id: auth0UserId,
-          trigger: 'profile_update', // or 'manual_match_request'
-        }),
-      }
-    )
+    const db = await getDb()
+    const usersCollection = db.collection('users')
+    const scholarshipsCollection = db.collection('scholarships')
+    const matchesCollection = db.collection('matches')
 
-    if (!response.ok) {
-      const error = await response.text()
-      throw new Error(`Gumloop API error: ${error}`)
+    // Get user with embedding
+    const user = await usersCollection.findOne({ auth0_id: auth0UserId })
+
+    if (!user) {
+      return NextResponse.json(
+        { error: 'User not found. Please complete your profile first.' },
+        { status: 404 }
+      )
     }
 
-    const data = await response.json()
+    if (!user.profile_embedding) {
+      return NextResponse.json(
+        { error: 'User profile embedding not found. Please update your profile.' },
+        { status: 400 }
+      )
+    }
+
+    // Get all scholarships with embeddings
+    const scholarships = await scholarshipsCollection
+      .find({ description_embedding: { $exists: true, $ne: null } })
+      .toArray()
+
+    const matchThreshold = 0.7 // Minimum similarity score
+    let matchesCreated = 0
+    let matchesUpdated = 0
+
+    // Match user with all scholarships
+    for (const scholarship of scholarships) {
+      if (!scholarship.description_embedding) continue
+
+      try {
+        const similarity = cosineSimilarity(
+          user.profile_embedding,
+          scholarship.description_embedding
+        )
+
+        if (similarity >= matchThreshold) {
+          // Check if match already exists
+          const existingMatch = await matchesCollection.findOne({
+            user_id: user._id,
+            scholarship_id: scholarship._id,
+          })
+
+          if (existingMatch) {
+            // Update existing match
+            await matchesCollection.updateOne(
+              { _id: existingMatch._id },
+              {
+                $set: {
+                  match_score: similarity,
+                  reason: `Matched by embedding similarity (${Math.round(similarity * 100)}%)`,
+                  updated_at: new Date(),
+                },
+              }
+            )
+            matchesUpdated++
+          } else {
+            // Create new match
+            await matchesCollection.insertOne({
+              user_id: user._id,
+              scholarship_id: scholarship._id,
+              match_score: similarity,
+              reason: `Matched by embedding similarity (${Math.round(similarity * 100)}%)`,
+              application_status: 'Not Started',
+              created_at: new Date(),
+              updated_at: new Date(),
+            })
+            matchesCreated++
+          }
+        }
+      } catch (error) {
+        console.error(`Error matching scholarship ${scholarship._id}:`, error)
+      }
+    }
 
     return NextResponse.json({
       success: true,
-      workflow_run_id: data.run_id,
-      message: 'Matching workflow triggered successfully',
+      message: 'Matching completed successfully',
+      matches_created: matchesCreated,
+      matches_updated: matchesUpdated,
+      total_matches: matchesCreated + matchesUpdated,
+      scholarships_checked: scholarships.length,
     })
   } catch (error) {
-    console.error('Error triggering Gumloop workflow:', error)
+    console.error('Error matching user:', error)
     return NextResponse.json(
-      { error: 'Failed to trigger matching workflow' },
+      { error: 'Failed to match scholarships' },
       { status: 500 }
     )
   }
